@@ -1,0 +1,13 @@
+.venv/
+.runtime/
+.superpowers/
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+node_modules/
+*.log
+credentials*.json
+service-account*.json
+*.dump
