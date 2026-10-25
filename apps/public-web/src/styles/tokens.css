@@ -1,0 +1,45 @@
+@theme {
+  --font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* Exact brand swatches supplied by the user. */
+  --color-ember: #C84B1B;
+  --color-forest: #1F4D45;
+  --color-warm-white: #FFFCF8;
+  --color-peach: #FBE8DE;
+  --color-charcoal: #26332F;
+  --color-sage: #66736D;
+
+  --color-primary: var(--color-ember);
+  --color-primary-hover: color-mix(in srgb, var(--color-ember) 88%, var(--color-charcoal));
+  --color-primary-light: var(--color-peach);
+  --color-primary-ink: var(--color-ember);
+  --color-heading: var(--color-forest);
+  --color-background: var(--color-warm-white);
+  --color-surface: var(--color-warm-white);
+  --color-text: var(--color-charcoal);
+  --color-secondary: var(--color-sage);
+
+  /* Supporting surfaces are mixtures of the six swatches, not extra hues. */
+  --color-border: color-mix(in srgb, var(--color-sage) 20%, var(--color-warm-white));
+  --color-soft: color-mix(in srgb, var(--color-forest) 3%, var(--color-warm-white));
+  --color-control-border: color-mix(in srgb, var(--color-sage) 80%, var(--color-warm-white));
+  --color-disabled: color-mix(in srgb, var(--color-sage) 12%, var(--color-warm-white));
+  --color-disabled-text: var(--color-charcoal);
+
+  --color-success: var(--color-forest);
+  --color-success-bg: color-mix(in srgb, var(--color-forest) 5%, var(--color-warm-white));
+  --color-success-ink: var(--color-forest);
+  --color-danger: var(--color-ember);
+  --color-danger-bg: var(--color-peach);
+  --color-danger-ink: var(--color-charcoal);
+  --color-warning: var(--color-ember);
+  --color-warning-bg: var(--color-peach);
+  --color-warning-ink: var(--color-charcoal);
+  --color-info: var(--color-forest);
+  --color-info-bg: var(--color-soft);
+  --color-info-ink: var(--color-forest);
+
+  --color-map-ground: color-mix(in srgb, var(--color-forest) 6%, var(--color-warm-white));
+  --color-map-block: color-mix(in srgb, var(--color-forest) 13%, var(--color-warm-white));
+  --color-map-water: color-mix(in srgb, var(--color-forest) 28%, var(--color-warm-white));
+}

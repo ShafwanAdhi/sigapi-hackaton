@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { canPreview, confirmationReducer, initialConfirmation } from '../src/features/incidents/confirmation.ts';
+import { confirmationReducer, initialConfirmation } from '../src/features/incidents/confirmation.ts';
 
 test('invalid clears solved and switching back does not restore the claim', () => {
   let state = confirmationReducer(initialConfirmation, { type: 'choice', value: 'valid' });
@@ -14,26 +14,21 @@ test('invalid clears solved and switching back does not restore the claim', () =
   assert.equal(state.solved, false);
 });
 
-test('both choices require an eligible simulated location; rejection is not an invalid vote', () => {
+test('location transitions preserve observations and never turn a location failure into an invalid answer', () => {
   for (const choice of ['valid', 'invalid'] as const) {
     let state = confirmationReducer(initialConfirmation, { type: 'choice', value: choice });
-    assert.equal(canPreview(state), false);
-    for (const location of ['denied', 'outside'] as const) {
+    state = confirmationReducer(state, { type: 'description', value: 'Pengamatan dari tempat aman.' });
+    for (const location of ['requesting', 'denied', 'outside', 'inaccurate', 'ready'] as const) {
       state = confirmationReducer(state, { type: 'location', value: location });
-      assert.equal(canPreview(state), false);
       assert.equal(state.choice, choice);
-      assert.equal(confirmationReducer(state, { type: 'preview' }).previewed, false);
+      assert.equal(state.description, 'Pengamatan dari tempat aman.');
     }
-    state = confirmationReducer(state, { type: 'location', value: 'ready' });
-    assert.equal(canPreview(state), true);
-    assert.equal(confirmationReducer(state, { type: 'preview' }).previewed, true);
   }
 });
 
-test('editing invalidates the previous preview and description is bounded', () => {
-  const state = { ...initialConfirmation, choice: 'valid' as const, location: 'ready' as const, previewed: true };
-  const edited = confirmationReducer(state, { type: 'description', value: 'a'.repeat(2001) });
-  assert.equal(edited.previewed, false);
-  assert.equal(edited.description.length, 2000);
-  assert.equal(confirmationReducer(state, { type: 'edited' }).previewed, false);
+test('description is bounded and no initial observation or solved claim is preselected', () => {
+  assert.equal(initialConfirmation.choice, null);
+  assert.equal(initialConfirmation.solved, false);
+  assert.equal(initialConfirmation.location, 'idle');
+  assert.equal(confirmationReducer(initialConfirmation, { type: 'description', value: 'a'.repeat(2001) }).description.length, 2000);
 });
