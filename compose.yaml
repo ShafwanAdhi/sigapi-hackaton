@@ -1,0 +1,140 @@
+name: sigapi
+x-app: &app
+  image: sigapi-api:local
+  build: {context: ., dockerfile: deploy/Dockerfile.api, target: api}
+  restart: unless-stopped
+  init: true
+  networks: [private]
+  volumes: [data:/data]
+  logging: {driver: json-file, options: {max-size: 5m, max-file: '2'}}
+  environment: &app-env
+    DATABASE_URL: postgresql://sigapi_app:${SIGAPI_DB_PASSWORD:?required}@db:5432/sigapi
+    INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?required}
+    SIGAPI_DATA_DIR: /data
+    SIGAPI_BIND: 0.0.0.0
+    SIGAPI_PUBLIC_URL: https://sigapi.shafwan.digital
+    SIGAPI_RUN_MODE: pilot
+    SIGAPI_RATE_SALT: ${SIGAPI_RATE_SALT:?required}
+    SIGAPI_TEST_SENDERS: ${SIGAPI_TEST_SENDERS:-}
+    SIGAPI_BOT_NUMBER: ${SIGAPI_BOT_NUMBER:-}
+    # Only edge reaches the unpublished web API; host Nginx replaces client headers.
+    SIGAPI_TRUSTED_PROXIES: '*'
+  depends_on: {db: {condition: service_healthy}}
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    mem_limit: 192m
+    cpus: 0.35
+    environment:
+      POSTGRES_DB: sigapi
+      POSTGRES_USER: sigapi_owner
+      POSTGRES_PASSWORD: ${SIGAPI_DB_OWNER_PASSWORD:?required}
+      SIGAPI_DB_PASSWORD: ${SIGAPI_DB_PASSWORD:?required}
+    command: [postgres, -c, shared_buffers=32MB, -c, max_connections=30, -c, work_mem=2MB]
+    volumes: [database:/var/lib/postgresql/data, ./deploy/db-init.sh:/docker-entrypoint-initdb.d/01-app.sh:ro]
+    networks: [private]
+    healthcheck: {test: [CMD-SHELL, 'pg_isready -U sigapi_owner -d sigapi'], interval: 10s, timeout: 5s, retries: 12}
+    logging: {driver: json-file, options: {max-size: 5m, max-file: '2'}}
+  internal:
+    <<: *app
+    command: [python, -m, backend.manage, internal]
+    mem_limit: 128m
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS -H "Authorization: Bearer $$INTERNAL_API_TOKEN" http://localhost:8011/internal/health >/dev/null']
+      interval: 30s
+      timeout: 5s
+      retries: 5
+  web:
+    <<: *app
+    command: [python, -m, backend.manage, web]
+    mem_limit: 192m
+    healthcheck: {test: [CMD, curl, -fsS, 'http://localhost:8012/healthz'], interval: 30s, timeout: 5s, retries: 5}
+  intake:
+    <<: *app
+    command: [python, -m, backend.manage, intake-worker]
+    mem_limit: 128m
+    healthcheck: {test: [CMD, python, -m, backend.manage, health, --service, intake], interval: 30s, timeout: 10s, retries: 4}
+  analysis:
+    <<: *app
+    command: [python, -m, backend.manage, analysis-worker]
+    mem_limit: 256m
+    healthcheck: {test: [CMD, python, -m, backend.manage, health, --service, analysis], interval: 30s, timeout: 10s, retries: 4}
+    environment:
+      <<: *app-env
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_VISION_MODEL: ${GROQ_VISION_MODEL:-}
+      GROQ_TEXT_MODEL: ${GROQ_TEXT_MODEL:-}
+      SERPAPI_API_KEY: ${SERPAPI_API_KEY:-}
+      ENABLE_GOOGLE_VISION: 'false'
+      SIGAPI_GROQ_DAILY_REQUESTS: '100'
+      SIGAPI_SERPAPI_DAILY_REQUESTS: '50'
+  scheduler:
+    <<: *app
+    # Retention spans app-owned and node-owned volumes; no host filesystem/socket.
+    user: '0:0'
+    read_only: true
+    tmpfs: [/tmp]
+    command: [python, -m, backend.manage, scheduler]
+    mem_limit: 128m
+    healthcheck: {test: [CMD, python, -m, backend.manage, health, --service, scheduler], interval: 30s, timeout: 10s, retries: 4}
+    environment:
+      <<: *app-env
+      SIGAPI_RETENTION_ENABLED: 'true'
+      SIGAPI_GATEWAY_DATA_DIR: /gateway
+    volumes: [data:/data, gateway:/gateway]
+  gateway:
+    image: sigapi-gateway:local
+    build: {context: ., dockerfile: deploy/Dockerfile.gateway}
+    restart: unless-stopped
+    init: true
+    mem_limit: 768m
+    healthcheck:
+      test: [CMD, node, -e, 'process.exit(Date.now()-require("fs").statSync("/gateway/heartbeat").mtimeMs<90000?0:1)']
+      interval: 30s
+      timeout: 5s
+      start_period: 90s
+      retries: 4
+    environment:
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?required}
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:?required}
+      OPENCLAW_STATE_DIR: /gateway/state
+      SIGAPI_INTERNAL_URL: http://internal:8011
+      SIGAPI_TEST_SENDERS: ${SIGAPI_TEST_SENDERS:-}
+      SIGAPI_WHATSAPP_OPEN: 'false'
+    volumes: [gateway:/gateway]
+    networks: [private]
+    depends_on: {internal: {condition: service_healthy}}
+    logging: {driver: json-file, options: {max-size: 5m, max-file: '2'}}
+  edge:
+    image: sigapi-edge:local
+    build: {context: ., dockerfile: deploy/Dockerfile.edge}
+    restart: unless-stopped
+    mem_limit: 32m
+    ports: ['127.0.0.1:8084:80']
+    networks: [private]
+    depends_on: {web: {condition: service_healthy}}
+    logging: {driver: json-file, options: {max-size: 5m, max-file: '2'}}
+  test-db:
+    image: postgres:16-alpine
+    profiles: [test]
+    mem_limit: 192m
+    environment: {POSTGRES_DB: sigapi_test, POSTGRES_USER: test_app, POSTGRES_PASSWORD: '${SIGAPI_TEST_DB_PASSWORD:?required}'}
+    command: [postgres, -c, shared_buffers=32MB]
+    tmpfs: [/var/lib/postgresql/data]
+    networks: [private]
+    healthcheck: {test: [CMD-SHELL, 'pg_isready -U test_app -d sigapi_test'], interval: 5s, timeout: 3s, retries: 12}
+  tests:
+    image: sigapi-test:local
+    build: {context: ., dockerfile: deploy/Dockerfile.api, target: test}
+    profiles: [test]
+    mem_limit: 512m
+    environment: {TEST_DATABASE_URL: 'postgresql://test_app:${SIGAPI_TEST_DB_PASSWORD:?required}@test-db:5432/sigapi_test'}
+    networks: [private]
+    depends_on: {test-db: {condition: service_healthy}}
+networks:
+  private: {driver: bridge}
+volumes:
+  database:
+  data:
+  gateway:

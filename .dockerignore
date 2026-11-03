@@ -1,0 +1,15 @@
+.git
+.env
+.env.*
+.runtime
+.venv
+.superpowers
+**/node_modules
+**/__pycache__
+**/test-results
+**/artifacts
+**/*.log
+credentials*.json
+service-account*.json
+.gateway-lock
+*.tar.gz

@@ -1,0 +1,19 @@
+FROM python:3.11-slim-bookworm AS api
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg curl && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY requirements.txt ./
+RUN pip install -r requirements.txt
+COPY backend ./backend
+RUN useradd --uid 10001 --create-home sigapi && mkdir -p /data/media && chown -R sigapi:sigapi /data
+USER sigapi
+CMD ["python","-m","backend.manage","web"]
+
+FROM node:24.22.1-bookworm-slim AS node-runtime
+FROM api AS test
+USER root
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
+COPY tests ./tests
+COPY openclaw-plugin ./openclaw-plugin
+USER sigapi
+CMD ["python","-m","unittest","discover","-s","tests","-q"]

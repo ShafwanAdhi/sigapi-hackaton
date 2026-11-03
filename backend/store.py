@@ -1,6 +1,7 @@
 """PostgreSQL durable intake, ordered jobs, and fenced reply outbox."""
 
 import json
+import os
 from pathlib import Path
 from uuid import uuid4
 
@@ -103,7 +104,8 @@ class Store:
             command = event.get('text', '').strip().upper()
             created = False
             if command.startswith('TRACK'):
-                reply = 'TRACK belum tersedia pada tahap ini. Tidak ada informasi laporan orang lain yang ditampilkan.'
+                reply = (self.track_reply(db,source,command) if hasattr(self,'track_reply') else
+                         'TRACK belum tersedia pada tahap ini. Tidak ada informasi laporan orang lain yang ditampilkan.')
             elif command == 'STATUS':
                 reply = ('Status data: ' + report['status'] + '; belum diverifikasi atau dipublikasikan.' if report
                          else 'Belum ada draft. Ketik REPORT untuk memulai laporan.')
@@ -118,6 +120,12 @@ class Store:
                     report = None
                 created = report is None
                 if created:
+                    if hasattr(self,'allow_new_report') and not self.allow_new_report(db,source):
+                        db.execute('INSERT INTO outbox(id,event_seq,account_id,sender_ref,text) VALUES(%s,%s,%s,%s,%s)',
+                                   (uuid4(),source['seq'],account,sender,'Batas laporan baru hari ini tercapai. Tidak ada laporan baru disimpan. Jika darurat, hubungi layanan darurat setempat.'))
+                        db.execute('UPDATE inbound_events SET processed=true WHERE seq=%s',(source['seq'],))
+                        db.execute("UPDATE jobs SET state='done',lease_until=NULL WHERE id=%s",(job['id'],))
+                        return True
                     report = db.execute('''INSERT INTO reports(id,account_id,sender_ref,conversation_id,state)
                         VALUES(%s,%s,%s,%s,%s) RETURNING *''',
                                         (uuid4(), account, sender, source['conversation_id'], Jsonb(new_state()))).fetchone()
@@ -135,13 +143,17 @@ class Store:
                 revision = report['revision'] + int(changed)
                 db.execute('UPDATE reports SET state=%s,status=%s,revision=%s,updated_at=now() WHERE id=%s',
                            (Jsonb(state), state['status'], revision, report['id']))
+                if changed and report.get('incident_id') and any(state.get(k)!=report['state'].get(k) for k in ('location','media_ids','description')):
+                    db.execute('UPDATE public_incidents SET withdrawn=true WHERE incident_id=%s',(report['incident_id'],))
                 if state['consent_record'] is not None:
                     db.execute('INSERT INTO consent_events(event_seq,report_id,allowed) VALUES(%s,%s,%s)',
                                (source['seq'], report['id'], state['consent_record']))
             report_id = report['id'] if report else None
             if getattr(self,'task3',False) and (report is None or created or report['task3_enabled']):
                 reply=self.natural_reply(reply)
+            if hasattr(self,'safety_reply'):reply=self.safety_reply(reply,report,source)
             prefix = f"[UJI] Laporan {str(report_id)[:8]}: " if report_id else '[UJI] '
+            if os.environ.get('SIGAPI_RUN_MODE')=='pilot':prefix=prefix.replace('[UJI]','SIGAPI ·')
             db.execute('INSERT INTO outbox(id,event_seq,report_id,account_id,sender_ref,text) VALUES(%s,%s,%s,%s,%s,%s)',
                        (uuid4(), source['seq'], report_id, account, sender, prefix + reply))
             db.execute('UPDATE inbound_events SET processed=true,report_id=%s WHERE seq=%s', (report_id, source['seq']))

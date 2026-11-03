@@ -31,6 +31,7 @@ def validate_media(row, root):
 def run_worker(store, root, *, once=False):
     while True:
         try:
+            if hasattr(store,'beat'):store.beat('intake')
             worked = store.run_once(validate=lambda row: validate_media(row, root))
         except Exception:
             print('Worker job gagal; detail input/credential tidak dicetak. Periksa jobs.reason lokal.', flush=True)

@@ -1,4 +1,18 @@
-# SIGAPI — demo verifikasi Karhutla
+# SIGAPI — pelaporan kebakaran dan dashboard Admin Kota
+
+Implementasi MVP menambahkan API publik dengan validasi GPS, receipt idempoten,
+TRACK milik pengirim, autentikasi admin, konfigurasi penerima PostgreSQL, dan
+dashboard React lima menu. Desain publik, logo, serta palet SIGAPI dipertahankan.
+
+Lihat [rencana MVP](docs/superpowers/plans/2026-11-03-public-mvp.md),
+[operasional VPS](docs/mvp-operations.md), dan
+[sumber panduan keselamatan](docs/safety-sources.md).
+
+**Batas penerimaan:** fresh pairing VPS, dua kontak uji berizin, review batas
+wilayah, dan rehearsal menyeluruh tetap harus dibuktikan. Distribusi dan akses
+warga umum nonaktif pada konfigurasi awal. Kelulusan tes bukan bukti gate live.
+
+## Catatan integrasi awal (23–24 Oktober 2026)
 
 Ada **5 task berurutan** dalam [rencana implementasi](docs/superpowers/plans/2026-10-22-validation-demo-implementation.md):
 

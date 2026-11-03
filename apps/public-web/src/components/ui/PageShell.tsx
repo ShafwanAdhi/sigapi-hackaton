@@ -16,7 +16,7 @@ export function SigapiHeader({ children, reference }: { children?: ReactNode; re
         onError={event => { event.currentTarget.style.display = 'none'; }}
       />
       <div className="header-inner">
-        <a className="brand-link" href={'/laporan/' + demoIncident.slug} aria-label="SIGAPI, halaman laporan"><BrandLogo /></a>
+        <a className="brand-link" href={import.meta.env.DEV ? '/laporan/' + demoIncident.slug : '/'} aria-label="SIGAPI, halaman laporan"><BrandLogo /></a>
         {reference && <span className="page-label"><span className="sr-only">Nomor laporan: </span>{reference}</span>}
       </div>
       {children}

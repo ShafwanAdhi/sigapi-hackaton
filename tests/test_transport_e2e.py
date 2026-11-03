@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import socket
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -19,7 +20,7 @@ from backend.worker import validate_media
 from tests.test_store import DSN
 
 ROOT = Path(__file__).resolve().parents[1]
-NODE = ROOT / '.runtime/node/package/bin/node.exe'
+NODE = Path(shutil.which('node') or ROOT / '.runtime/node/package/bin/node.exe')
 
 
 @unittest.skipUnless(DSN and NODE.is_file(), 'Requires test DB and local Node')

@@ -1,5 +1,6 @@
 """Explicit, audited local operator actions. Never erase original evidence."""
 import secrets
+from contextlib import nullcontext
 from urllib.parse import urlparse
 from uuid import uuid4
 from psycopg.types.json import Jsonb
@@ -17,12 +18,12 @@ def requeue(store,db,r):
     return revision
 
 
-def review_evidence(store,report_id,key,reason,references):
+def review_evidence(store,report_id,key,reason,references,*,connection=None,actor='operator'):
     reason_required(reason)
     if not references or any(urlparse(url).scheme not in ('https','http') or not urlparse(url).netloc for url in references):
         raise ValueError('EVIDENCE_REFERENCES_REQUIRED')
-    with store.connect() as db:
-        r=db.execute('SELECT * FROM reports WHERE id=%s AND active FOR UPDATE',(report_id,)).fetchone()
+    with (store.connect() if connection is None else nullcontext(connection)) as db:
+        r=db.execute("SELECT * FROM reports WHERE id=%s AND lifecycle='open' FOR UPDATE",(report_id,)).fetchone()
         if not r or r['status']!='complete':raise ValueError('COMPLETE_ACTIVE_REPORT_REQUIRED')
         ev=db.execute("SELECT * FROM evidence_results WHERE report_id=%s AND revision=%s AND (evidence_key=%s OR %s='local_reuse' AND kind='frame')",(report_id,r['revision'],key,key)).fetchone()
         if not ev:raise ValueError('CURRENT_EVIDENCE_REQUIRED')
@@ -33,18 +34,18 @@ def review_evidence(store,report_id,key,reason,references):
           WHERE report_id=%s AND revision=%s''',(revision,report_id,r['revision']))
         db.execute('INSERT INTO manual_reviews(id,report_id,revision,evidence_key,reason,references_json) VALUES(%s,%s,%s,%s,%s,%s)',
                    (uuid4(),report_id,revision,key,reason,Jsonb(references)))
-        store.audit(db,report_id,'EVIDENCE_REVIEWED',{'evidence_id':str(ev['id']),'key':key,'reason':reason,'references':references,'revision':revision},'operator')
+        store.audit(db,report_id,'EVIDENCE_REVIEWED',{'evidence_id':str(ev['id']),'key':key,'reason':reason,'references':references,'revision':revision},actor)
 
 
-def group_incident(store,report_id,target_id,reason):
+def group_incident(store,report_id,target_id,reason,*,connection=None,actor='operator'):
     """target=None confirms a separate incident; a candidate UUID confirms a merge."""
     reason_required(reason)
-    with store.connect() as db:
+    with (store.connect() if connection is None else nullcontext(connection)) as db:
         # Same lock order as matching; serialize grouping within an account.
         identity=db.execute('SELECT account_id FROM reports WHERE id=%s',(report_id,)).fetchone()
         if not identity:raise ValueError('REPORT_NOT_FOUND')
         db.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s,0))',('incidents:'+identity['account_id'],))
-        r=db.execute('SELECT * FROM reports WHERE id=%s AND active FOR UPDATE',(report_id,)).fetchone()
+        r=db.execute("SELECT * FROM reports WHERE id=%s AND lifecycle='open' FOR UPDATE",(report_id,)).fetchone()
         if not r or not r['incident_id']:raise ValueError('INCIDENT_REQUIRED')
         old=r['incident_id']
         if target_id:
@@ -60,27 +61,28 @@ def group_incident(store,report_id,target_id,reason):
                    VALUES(%s,%s,%s,%s,%s,%s)''',(target_id,secrets.token_hex(16),Jsonb(r['state']['location']),r['facts'].get('observed_at'),r['facts'].get('category','unknown'),r['account_id']))
             else:
                 target_id=old
-                db.execute('UPDATE incidents SET location=%s,observed_at=%s,category=%s WHERE id=%s',
-                   (Jsonb(r['state']['location']),r['facts'].get('observed_at'),r['facts'].get('category','unknown'),old))
+                db.execute('UPDATE incidents SET location_version=location_version+CASE WHEN location IS DISTINCT FROM %s THEN 1 ELSE 0 END,location=%s,observed_at=%s,category=%s WHERE id=%s',
+                           (Jsonb(r['state']['location']),Jsonb(r['state']['location']),r['facts'].get('observed_at'),r['facts'].get('category','unknown'),old))
         db.execute('UPDATE reports SET incident_id=%s,incident_basis=%s WHERE id=%s',
                    (target_id,Jsonb({'location':r['state']['location'],'observed_at':r['facts'].get('observed_at'),'category':r['facts'].get('category','unknown')}),report_id))
         db.execute('UPDATE incidents SET pending_review=false,revision=revision+1 WHERE id=%s',(target_id,))
+        db.execute('UPDATE public_incidents SET withdrawn=true WHERE incident_id IN (%s,%s)',(old,target_id))
         db.execute('UPDATE report_incident_matches SET reviewed=true WHERE report_id=%s',(report_id,))
         db.execute("UPDATE outbox SET state='cancelled',reason='OPERATOR_REGROUPED' WHERE report_id=%s AND audience<>'reporter' AND state IN ('pending','leased')",(report_id,))
         requeue(store,db,r)
-        store.audit(db,report_id,'INCIDENT_GROUP_REVIEWED',{'from':str(old),'to':str(target_id),'reason':reason},'operator')
+        store.audit(db,report_id,'INCIDENT_GROUP_REVIEWED',{'from':str(old),'to':str(target_id),'reason':reason},actor)
 
 
-def reconcile(store,outbox_id,reason,receipt=None,retry=False):
+def reconcile(store,outbox_id,reason,receipt=None,retry=False,*,connection=None,actor='operator'):
     reason_required(reason)
     if bool(receipt)==bool(retry):raise ValueError('CHOOSE_RECEIPT_OR_EXPLICIT_RETRY')
     if receipt and (not isinstance(receipt,str) or len(receipt)>300):raise ValueError('INVALID_RECEIPT')
-    with store.connect() as db:
+    with (store.connect() if connection is None else nullcontext(connection)) as db:
         row=db.execute("SELECT * FROM outbox WHERE id=%s AND state='unknown' FOR UPDATE",(outbox_id,)).fetchone()
         if not row:raise ValueError('UNKNOWN_OUTBOX_REQUIRED')
         db.execute('''UPDATE outbox SET state=%s,provider_message_id=%s,lease_token=NULL,lease_until=NULL,
           available_at=now(),reason='OPERATOR_RECONCILED' WHERE id=%s''',('pending' if retry else 'sent',receipt,outbox_id))
-        store.audit(db,row['report_id'],'DELIVERY_RECONCILED',{'outbox_id':str(outbox_id),'reason':reason,'receipt':receipt,'retry':retry},'operator')
+        store.audit(db,row['report_id'],'DELIVERY_RECONCILED',{'outbox_id':str(outbox_id),'reason':reason,'receipt':receipt,'retry':retry},actor)
 
 
 def inspect_report(store,report_id):

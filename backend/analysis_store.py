@@ -1,6 +1,7 @@
 """Durable extraction/evidence queue with input and lease fencing."""
 import json
 import re
+import os
 from uuid import uuid4
 from psycopg.types.json import Jsonb
 from backend.store import Store
@@ -53,7 +54,7 @@ class AnalysisStore(Store):
 
     def opt_in(self,report_id):
         with self.connect() as db:
-            r=db.execute('SELECT * FROM reports WHERE id=%s AND active FOR UPDATE',(report_id,)).fetchone()
+            r=db.execute("SELECT * FROM reports WHERE id=%s AND lifecycle='open' FOR UPDATE",(report_id,)).fetchone()
             if not r:raise ValueError('ACTIVE_REPORT_NOT_FOUND')
             seq=db.execute('SELECT max(seq) n FROM inbound_events WHERE report_id=%s',(report_id,)).fetchone()['n']
             if not seq:raise ValueError('NO_INPUT')
@@ -71,7 +72,8 @@ class AnalysisStore(Store):
         with self.connect() as db:
             j=db.execute('''SELECT j.* FROM analysis_jobs j JOIN reports r ON r.id=j.report_id WHERE
               (j.state='pending' OR (j.state='running' AND j.lease_until<now())) AND j.available_at<=now()
-              AND (%s::text IS NULL OR r.account_id=%s) AND r.active
+              AND (%s::text IS NULL OR r.account_id=%s) AND r.lifecycle='open'
+              AND NOT EXISTS(SELECT 1 FROM inbound_events e WHERE e.account_id=r.account_id AND e.sender_ref=r.sender_ref AND NOT e.processed)
               AND (%s::uuid IS NULL OR r.id=%s)
               ORDER BY CASE WHEN j.kind='extract' THEN 0 ELSE 1 END,j.created_at
               FOR UPDATE OF j SKIP LOCKED LIMIT 1''',(account,account,report_id,report_id)).fetchone()
@@ -87,10 +89,21 @@ class AnalysisStore(Store):
             with self.connect() as conn:return self.is_current(job,conn)
         return bool(db.execute('''SELECT 1 FROM reports r JOIN analysis_jobs j ON j.report_id=r.id
           WHERE j.id=%s AND j.state='running' AND j.lease_token=%s AND j.lease_until>now()
-          AND r.active AND r.task3_enabled AND r.revision=%s AND r.latest_seq=%s
+          AND r.lifecycle='open' AND r.task3_enabled AND r.revision=%s AND r.latest_seq=%s
           AND NOT EXISTS(SELECT 1 FROM inbound_events e WHERE e.account_id=r.account_id
              AND e.sender_ref=r.sender_ref AND e.seq>r.latest_seq AND NOT e.processed)''',
           (job['id'],job['lease_token'],job['revision'],job['input_seq'])).fetchone())
+
+    def end_analysis(self,job,state,db=None):
+        if db is None:
+            with self.connect() as connection:return self.end_analysis(job,state,connection)
+        db.execute("""UPDATE analysis_jobs j SET state=CASE WHEN %s='superseded' AND EXISTS(
+          SELECT 1 FROM reports r WHERE r.id=j.report_id AND r.lifecycle='open'
+          AND r.revision=%s AND r.latest_seq=%s AND EXISTS(SELECT 1 FROM inbound_events e
+            WHERE e.account_id=r.account_id AND e.sender_ref=r.sender_ref AND NOT e.processed))
+          THEN 'pending' ELSE %s END,lease_until=NULL
+          WHERE j.id=%s AND j.lease_token=%s AND j.state='running'""",
+          (state,job['revision'],job['input_seq'],state,job['id'],job['lease_token']))
 
     def snapshot(self,job):
         with self.connect() as db:
@@ -107,7 +120,7 @@ class AnalysisStore(Store):
     def notify(db,r,source_key,text):
         db.execute('''INSERT INTO outbox(id,report_id,account_id,sender_ref,text,source_key,report_revision,input_seq)
           VALUES(%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(source_key) DO NOTHING''',
-          (uuid4(),r['id'],r['account_id'],r['sender_ref'],'[UJI] Laporan '+str(r['id'])[:8]+': '+text[:1200],source_key,r['revision'],r['latest_seq']))
+          (uuid4(),r['id'],r['account_id'],r['sender_ref'],('SIGAPI · ' if os.environ.get('SIGAPI_RUN_MODE')=='pilot' else '[UJI] ')+'Laporan '+str(r['id'])[:8]+': '+text[:1200],source_key,r['revision'],r['latest_seq']))
 
     def commit_extraction(self,job,result,sources):
         with self.connect() as db:
@@ -160,14 +173,17 @@ class AnalysisStore(Store):
         with self.connect() as db:
             db.execute('INSERT INTO provider_operations(operation_key,result) VALUES(%s,%s) ON CONFLICT(operation_key) DO UPDATE SET result=excluded.result',(key,Jsonb(result)))
 
-    def claim_outbox(self,accounts,senders):
+    def claim_outbox(self,accounts,senders,*,public_reporters=False):
         with self.connect() as db:
             db.execute("UPDATE outbox SET state='unknown',reason='SEND_LEASE_EXPIRED' WHERE state='sending' AND lease_until<now()")
-            row=db.execute('''SELECT o.* FROM outbox o WHERE o.account_id=ANY(%s) AND o.sender_ref=ANY(%s)
+            row=db.execute('''SELECT o.* FROM outbox o WHERE o.account_id=ANY(%s) AND
+              (o.sender_ref=ANY(%s) OR (%s AND o.audience='reporter' AND EXISTS(
+                SELECT 1 FROM inbound_events e WHERE e.account_id=o.account_id AND e.sender_ref=o.sender_ref
+                AND (e.seq=o.event_seq OR e.report_id=o.report_id))))
               AND o.available_at<=now() AND (o.state='pending' OR (o.state='leased' AND o.lease_until<now()))
               AND NOT EXISTS(SELECT 1 FROM outbox earlier WHERE earlier.account_id=o.account_id AND earlier.sender_ref=o.sender_ref
                 AND (earlier.created_at,earlier.id)<(o.created_at,o.id) AND earlier.state IN ('pending','leased','sending'))
-              ORDER BY o.created_at,o.id FOR UPDATE OF o SKIP LOCKED LIMIT 1''',(accounts,senders)).fetchone()
+              ORDER BY o.created_at,o.id FOR UPDATE OF o SKIP LOCKED LIMIT 1''',(accounts,senders,public_reporters)).fetchone()
             if not row:return None
             return db.execute("UPDATE outbox SET state='leased',lease_token=%s,lease_until=now()+interval '60 seconds' WHERE id=%s RETURNING *",(uuid4(),row['id'])).fetchone()
 
@@ -180,10 +196,13 @@ class AnalysisStore(Store):
             if not row or row['state']!='leased' or row['lease_token']!=token:return False
             valid=True
             if row['report_revision'] is not None:
-                valid=bool(r and r['active'] and r['revision']==row['report_revision'] and r['latest_seq']==row['input_seq'])
+                valid=bool(r and r['lifecycle']=='open' and r['revision']==row['report_revision'] and r['latest_seq']==row['input_seq'])
                 if r and db.execute('SELECT 1 FROM inbound_events WHERE account_id=%s AND sender_ref=%s AND seq>%s AND NOT processed LIMIT 1',(r['account_id'],r['sender_ref'],r['latest_seq'])).fetchone():valid=False
             if row['audience']!='reporter':
                 valid=valid and self.config.allowed(row['audience'],row['sender_ref'],row['account_id'])
+                if row['destination_version'] is not None:
+                    destination=self.config.destinations().get(row['destination_id'])
+                    valid=valid and bool(destination and destination.get('version')==row['destination_version'])
                 valid=valid and bool(r and row['sender_ref']!=r['sender_ref'])
                 incident=db.execute('SELECT revision,pending_review FROM incidents WHERE id=%s',(row['incident_id'],)).fetchone()
                 valid=valid and bool(incident and incident['revision']==row['incident_revision'])

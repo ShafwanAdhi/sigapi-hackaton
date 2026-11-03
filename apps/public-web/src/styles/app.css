@@ -1,6 +1,10 @@
 @import "tailwindcss";
 @import "./tokens.css";
 
+.live-incident-map { height:300px; width:100%; border-radius:12px; overflow:hidden; z-index:0; }
+.live-fields { border:0; padding:0; margin:0; min-width:0; }
+.location-status strong { overflow-wrap:anywhere; }
+
 :root { font-family: var(--font-sans); color: var(--color-text); background: var(--color-background); color-scheme: light; font-synthesis: none; text-rendering: optimizeLegibility; }
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 280px; font-size: 14px; line-height: 1.6; }

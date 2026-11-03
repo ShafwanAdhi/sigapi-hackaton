@@ -1,0 +1,9 @@
+{
+  "name": "sigapi-gateway-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "openclaw": "2026.10.6",
+    "@openclaw/whatsapp": "2026.10.6"
+  }
+}

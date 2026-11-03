@@ -1,0 +1,11 @@
+[Unit]
+Description=SIGAPI encrypted backup
+After=docker.service
+Requires=docker.service
+[Service]
+Type=oneshot
+User=deploy
+WorkingDirectory=/opt/sigapi
+ExecStart=/bin/bash /opt/sigapi/deploy/backup.sh
+Nice=10
+MemoryMax=256M

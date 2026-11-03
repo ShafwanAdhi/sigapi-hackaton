@@ -38,6 +38,8 @@ class FakeServices:
                 'category':'forest_land','category_source':{'source_id':s['id'],'quote':'hutan'}}
     def observe(self,data):return {'outcome':'unavailable'} if self.fail else {'fire_visible':True,'smoke_visible':True,'image_quality':'clear','observations':['Api di pepohonan']}
     def web(self,data):return {'web':{'outcome':self.web_outcome},'attempts':[]}
+    def consistency(self,sources,frames,metadata):
+        return {'outcome':'unavailable' if self.fail else 'supported','reasons':[],'source_refs':[]}
 
 
 @unittest.skipUnless(DSN,'Requires separate test DB')

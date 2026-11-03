@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { Icon } from '../../components/ui/Icon';
 
-export function PhotoUploadField() {
+export function PhotoUploadField({onChange}:{onChange?:(file:File|null)=>void}={}) {
   const [photo, setPhoto] = useState<{ file: File; url: string } | null>(null);
   const [error, setError] = useState('');
   const [decoding, setDecoding] = useState(false);
@@ -16,6 +16,7 @@ export function PhotoUploadField() {
   function removePhoto() {
     photoRequest.current += 1;
     setPhoto(null);
+    onChange?.(null);
     setError('');
     setDecoding(false);
     if (fileInput.current) fileInput.current.value = '';
@@ -27,6 +28,7 @@ export function PhotoUploadField() {
     const file = event.target.files?.[0];
     if (!file) return;
     setPhoto(null);
+    onChange?.(null);
     setError('');
     setDecoding(false);
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) {
@@ -42,6 +44,7 @@ export function PhotoUploadField() {
       await image.decode();
       if (request !== photoRequest.current) { URL.revokeObjectURL(url); return; }
       setPhoto({ file, url });
+      onChange?.(file);
     } catch {
       URL.revokeObjectURL(url);
       if (request === photoRequest.current) {

@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 import os
+from typing import Literal
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -27,7 +28,20 @@ class IntakeEvent(InboundEvent):
 class Claim(BaseModel):
     model_config = ConfigDict(extra='forbid')
     accounts: list[str] = Field(min_length=1, max_length=10)
-    senders: list[str] = Field(min_length=1, max_length=20)
+    senders: list[str] = Field(default_factory=list, max_length=200)
+    public_reporters: bool = False
+
+
+class Admission(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    account_id: str = Field(min_length=1,max_length=200)
+    sender_ref: str = Field(min_length=1,max_length=200)
+    provider_message_id: str = Field(min_length=1,max_length=300)
+
+
+class Heartbeat(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    service: Literal['gateway']
 
 
 class Delivery(BaseModel):
@@ -75,10 +89,23 @@ def create_intake_app(token, store, media_root):
     def receive(event: IntakeEvent):
         if event.from_me:
             return {'mode':'ignored','persistent_intake':False}
+        if hasattr(store,'admit'):
+            store.admit(event.account_id,event.sender_ref,event.provider_message_id)
         try:
             return store.accept(event.model_dump(mode='json'))
         except ValueError:
             raise HTTPException(422, 'INVALID_EVENT_REFERENCE') from None
+
+    @app.post('/internal/admission')
+    def admission(body: Admission):
+        if not hasattr(store,'admit'):raise HTTPException(503,'PUBLIC_INTAKE_UNAVAILABLE')
+        store.admit(body.account_id,body.sender_ref,body.provider_message_id)
+        return {'admitted':True}
+
+    @app.post('/internal/heartbeat')
+    def heartbeat(body:Heartbeat):
+        if hasattr(store,'beat'):store.beat(body.service)
+        return {'recorded':hasattr(store,'beat')}
 
     @app.post('/internal/media', status_code=201)
     async def upload(request: Request, x_account_id: str = Header(min_length=1,max_length=200),
@@ -124,10 +151,11 @@ def create_intake_app(token, store, media_root):
 
     @app.post('/internal/outbox/claim')
     def claim(body: Claim):
-        row = store.claim_outbox(body.accounts, body.senders)
+        row = (store.claim_outbox(body.accounts,body.senders,public_reporters=True) if body.public_reporters
+               else store.claim_outbox(body.accounts, body.senders))
         if not row:
             return {'item':None}
-        return {'item':{k:row[k] for k in ['id','account_id','sender_ref','text','lease_token']}}
+        return {'item':dict({k:row[k] for k in ['id','account_id','sender_ref','text','lease_token']},recipient_authorized=True)}
 
     @app.post('/internal/outbox/{id}/start')
     def start(id: UUID, body: Delivery):

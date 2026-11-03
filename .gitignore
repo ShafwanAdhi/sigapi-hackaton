@@ -11,3 +11,8 @@ node_modules/
 credentials*.json
 service-account*.json
 *.dump
+**/dist/
+**/test-results/
+**/playwright-report/
+**/.secrets/
+**/backups/

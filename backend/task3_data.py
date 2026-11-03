@@ -4,6 +4,7 @@ import hashlib
 import io
 import json
 import math
+import os
 from datetime import datetime,timedelta,timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -25,7 +26,7 @@ def bootstrap(path=None):
     if path.exists():return path
     claw=json.loads((ROOT/'.runtime/openclaw-state/openclaw.json').read_text(encoding='utf-8'))
     senders=claw['plugins']['entries']['sigapi-validation-demo']['config']['allowSenders']
-    save_json(path,{'distribution_enabled':False,'bot_number':'+62895411200308','inbound_senders':senders,
+    save_json(path,{'distribution_enabled':False,'bot_number':os.environ.get('SIGAPI_BOT_NUMBER'),'inbound_senders':senders,
         'region_path':str(path.parent/'kota-malang.geojson'),'approved_region_sha256':None,
         'firms_path':str(path.parent/'firms.json'),'destinations':{}})
     return path
