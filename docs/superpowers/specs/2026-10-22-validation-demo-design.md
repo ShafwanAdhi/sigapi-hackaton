@@ -1,5 +1,9 @@
 # Demo OpenClaw: Validasi dan Verifikasi
 
+> Amendemen 24 Oktober 2026: [audit Knowledge v3 dan keputusan pengguna](../../audit-knowledge-v3-2026-10-24.md) mencatat bahwa teks lokasi hanya untuk klarifikasi; pin/koordinat kejadian terkonfirmasi tetap wajib. EXIF opsional, dan ketiadaannya saja tidak menahan laporan. Pemeriksaan konsistensi harus memakai bukti yang tersedia tanpa menyamakan unknown dengan consistent. Demo tidak menambahkan pemberitahuan/persetujuan khusus pemrosesan laporan/AI; izin berbagi kontak tetap eksplisit, terpisah, opsional, dan default tidak diberikan. Amendemen ini mencatat persyaratan, bukan menyatakan kekurangan implementasi audit sudah selesai.
+
+> Amendemen 23 Oktober 2026: pengguna menyetujui beberapa fallback. Ketentuan Vision wajib di bawah digantikan oleh [rancangan fallback](../specs/2026-10-23-web-evidence-fallback-design.md): SerpApi utama, Vision hanya opt-in, lokal sebagai bukti tambahan, dan review manual pending jika web unavailable. Gerbang Task 1 memerlukan minimal satu provider web nyata; lokal/fixture/manual pending tidak cukup. Rencana tetap lima task berurutan.
+
 Tanggal: 22 Oktober 2026. Target: 25 Oktober 2026, Asia/Jakarta.
 Status: fondasi Task 1 diimplementasikan; integrasi akun nyata belum lulus. Lihat [setup dan gerbang Task 1](../../setup-task-1.md).
 

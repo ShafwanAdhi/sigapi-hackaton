@@ -42,3 +42,24 @@ test('invalid configuration fails closed', () => {
   assert.throws(() => createHandlers({ token: '', allowSenders: ['team'] }));
   assert.throws(() => createHandlers({ token: 'x'.repeat(32), allowSenders: [] }));
 });
+
+test('DM hooks correlate by sender even when dispatch conversation points to bot', async () => {
+  let sent;
+  const handlers = createHandlers({ token: 'x'.repeat(32), allowSenders: ['team'], fetchImpl: async (_, options) => {
+    sent = JSON.parse(options.body);
+    return { ok: true, json: async () => ({ mode: 'smoke', reply_text: '[UJI] Pesan diterima' }) };
+  } });
+  handlers.received(event, { ...ctx, conversationId: 'team-chat' });
+  const result = await handlers.dispatch({}, { ...ctx, conversationId: 'bot-chat' });
+  assert.equal(result.text, '[UJI] Pesan diterima');
+  assert.equal(sent.conversation_id, 'team-chat');
+});
+
+test('same message ID from a different allowed sender cannot borrow facts', async () => {
+  let calls = 0;
+  const handlers = createHandlers({ token: 'x'.repeat(32), allowSenders: ['team', 'other'], fetchImpl: async () => { calls++; } });
+  handlers.received(event, ctx);
+  const result = await handlers.dispatch({}, { ...ctx, senderId: 'other' });
+  assert.match(result.text, /belum tersimpan/);
+  assert.equal(calls, 0);
+});

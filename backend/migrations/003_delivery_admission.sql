@@ -1,0 +1,2 @@
+ALTER TABLE outbox ADD COLUMN IF NOT EXISTS escalation boolean NOT NULL DEFAULT false;
+INSERT INTO schema_versions(version) VALUES(3) ON CONFLICT DO NOTHING;

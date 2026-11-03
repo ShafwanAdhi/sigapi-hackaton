@@ -1,5 +1,9 @@
 # Rencana Implementasi Demo OpenClaw: Validasi dan Verifikasi
 
+> Amendemen 24 Oktober 2026: ikuti [audit Knowledge v3 dan keputusan pengguna](../../audit-knowledge-v3-2026-10-24.md). Teks lokasi hanya untuk klarifikasi; pin/koordinat terkonfirmasi wajib tanpa geocoding. EXIF opsional dan ketiadaannya saja tidak memicu hold; pemeriksaan konsistensi membandingkan sumber yang tersedia. Demo tidak menambahkan pemberitahuan/persetujuan khusus pemrosesan laporan/AI; izin berbagi nomor tetap eksplisit dan opsional, default tidak diberikan. Implementasi konsistensi lintas sumber dan panduan keselamatan belum lengkap; form GPS dan TRACK tetap Task 4.
+
+> Amendemen 23 Oktober 2026: pengguna menyetujui beberapa fallback. Ketentuan Vision wajib di bawah digantikan oleh [rancangan fallback](../specs/2026-10-23-web-evidence-fallback-design.md): SerpApi utama, Vision hanya opt-in, lokal sebagai bukti tambahan, dan review manual pending jika web unavailable. Gerbang Task 1 memerlukan minimal satu provider web nyata; lokal/fixture/manual pending tidak cukup. Rencana tetap lima task berurutan.
+
 > Untuk pelaksana: gunakan skill `superpowers:executing-plans`, kerjakan sendiri secara berurutan. Jangan mulai task berikutnya sebelum pemeriksaan task sebelumnya lolos. Rencana ini belum menjalankan instalasi, aktivasi akun, atau implementasi.
 
 **Tujuan:** demo WhatsApp nyata yang memeriksa input melalui Groq dan Google Vision, menunjukkan alasan keputusan distribusi, lalu menerima konfirmasi publik berbasis GPS dan menjawab TRACK.
@@ -43,27 +47,31 @@ API internal/operator membutuhkan token layanan dan hanya listen lokal. API publ
 **Hasil:** pesan WhatsApp nyata dapat diterima/dibalas oleh plugin; satu foto berizin dianalisis oleh Groq dan Web Detection secara nyata. Belum ada routing kejadian.
 
 - [x] Siapkan environment Python lokal dan Git bila belum ada; abaikan environment, credential, media, database dump, sesi OpenClaw, dan log sensitif.
-- [ ] Sesuaikan Node dengan persyaratan OpenClaw yang dipasang. Instal OpenClaw dan plugin WhatsApp resmi proyek OpenClaw, pin versi yang terbukti. Jangan mengganti OpenClaw dengan gateway lain jika integrasinya gagal.
-- [ ] Pengguna memasangkan nomor khusus melalui QR. Awalnya allowlist hanya nomor tim. Buktikan teks, foto, video dan lokasi native diterima; output bot sendiri diabaikan.
-- [ ] Buat plugin minimum yang mengambil alih dispatch sebelum agent biasa. Endpoint `POST /internal/whatsapp/events` menerima envelope; payload pengiriman berasal dari backend. Buktikan tidak ada balasan model kedua. Pada task ini endpoint cukup mode smoke dengan echo berlabel pengujian.
-- [ ] Pengguna memilih Google Cloud project, menautkan billing, mengaktifkan Vision API, serta menyiapkan Application Default Credentials lokal. Buat batas persisten demo 50 request Web Detection total pada aplikasi, termasuk retry; cache satu hasil sukses per gambar/versi. Budget alert bukan hard cap biaya akun.
-- [ ] Siapkan Groq key lokal. Uji model vision yang tercantum tersedia pada akun; pilih satu yang menghasilkan JSON schema-valid pada contoh api, tanpa api, dan gambar buram. Simpan model ID di environment, jangan hardcode klaim dukungan model yang belum diuji.
-- [ ] Untuk video, ekstrak maksimal tiga frame pada awal/tengah/akhir setelah decode; observasi terbatas pada frame tersebut. Batas demo: foto <=10 MB; video <=20 MB dan <=30 detik. Berkas melampaui batas diminta ulang; tidak diabaikan diam-diam.
+- [x] Sesuaikan Node dengan persyaratan OpenClaw yang dipasang. Instal OpenClaw dan plugin WhatsApp resmi proyek OpenClaw, pin versi yang terbukti. Jangan mengganti OpenClaw dengan gateway lain jika integrasinya gagal.
+- [x] Pengguna memasangkan nomor khusus melalui QR. Awalnya allowlist hanya nomor tim. Buktikan teks, foto, video dan lokasi native diterima; output bot sendiri diabaikan.
+- [x] Buat plugin minimum yang mengambil alih dispatch sebelum agent biasa. Endpoint `POST /internal/whatsapp/events` menerima envelope; payload pengiriman berasal dari backend. Buktikan tidak ada balasan model kedua. Pada task ini endpoint cukup mode smoke dengan echo berlabel pengujian.
+- [x] Sesuai amendemen fallback: satu provider web nyata tersedia. SerpApi berhasil upload + exact search pada foto publik (23 Oktober 2026); budget persisten 50 operasi HTTP dan cache teruji. Vision opsional tetap mati; billing Google tidak wajib.
+- [x] Siapkan Groq key lokal. Uji model vision yang tercantum tersedia pada akun; pilih satu yang menghasilkan JSON schema-valid pada contoh api, tanpa api, dan gambar buram. Simpan model ID di environment, jangan hardcode klaim dukungan model yang belum diuji.
+- [x] Untuk video, ekstrak maksimal tiga frame pada awal/tengah/akhir setelah decode; observasi terbatas pada frame tersebut. Batas demo: foto <=10 MB; video <=20 MB dan <=30 detik. Berkas melampaui batas diminta ulang; tidak diabaikan diam-diam.
 
 **Pemeriksaan:** smoke nyata pada nomor tim; simpan hasil provider yang telah diredaksi, ID/model/version dan waktu. Foto web yang diketahui harus memperlihatkan hasil asli Vision, walaupun provider tidak menemukan kecocokan. Ketiadaan kecocokan tidak boleh diganti fixture sukses. Kesalahan akun/transport adalah blocker task ini, bukan alasan mengklaim integrasi lulus.
 
 **Dependensi pengguna:** login Google/billing, Groq key lokal, pairing WhatsApp. Pelaksana menyiapkan instruksi dan konfigurasi; tidak meminta secret dikirim lewat chat.
 
+Status Task 1 pada 23 Oktober 2026: **lulus smoke integrasi**. Bukti WhatsApp empat jenis input dikonfirmasi pengguna; Groq foto api, potret tanpa api dan turunan buram berhasil; SerpApi exact search nyata berhasil; video nyata didekode menjadi tiga frame dan Groq berhasil setelah pacing35s. Readiness semua true dengan PATH FFmpeg lokal. Python37/Node6/syntax lulus. Review kode tidak menemukan isu kritis/penting; varian respons no-match tanpa array vendor tetap diperlakukan konservatif sebagai unavailable. Rincian/bukti privat dirujuk dari [panduan](../../setup-task-1.md). Ini belum intake persisten atau keputusan publikasi.
+
 ## Task 2 — Intake persisten dan percakapan kelengkapan
+
+**Status 23 Oktober 2026:** selesai. Gate laporan lengkap melalui WhatsApp nyata lulus pada 22:51 WIB; status complete, foto, pin terkonfirmasi, keterangan dan consent kontak false diverifikasi langsung di PostgreSQL. Lihat [panduan Task 2](../../setup-task-2.md). Verifikasi: 58 tes Python dan 12 tes Node lulus; plugin runtime terimpor dengan dua hook dan service outbox.
 
 **Hasil:** satu laporan dapat dibangun dari beberapa pesan WhatsApp, selamat dari restart dan terisolasi dari pengirim lain.
 
-- [ ] Buat skema awal PostgreSQL: inbound_events, reports, media, incidents, consent_events, jobs. SQL versi awal disimpan bersama backend; tidak menghapus data lama ketika start.
-- [ ] `POST /internal/whatsapp/events` mengembalikan 202 setelah event/job committed. Constraint `(account_id, provider_message_id)` mengembalikan receipt sama untuk replay. Mutasi per percakapan diserialisasi; hasil AI dari revision lama tidak menimpa revisi baru.
-- [ ] Ganti smoke echo dengan adapter produksi demo. Plugin menyimpan spool event/media secara atomik sebelum menyelesaikan takeover, lalu mengulang pengiriman ke backend sampai receipt diperoleh. Tidak menjanjikan recovery pesan yang belum diterima gateway.
-- [ ] Implementasikan satu draft aktif per pengirim. REPORT baru ketika draft aktif meminta pilihan eksplisit; TRACK dibaca terpisah. Periksa media decode, koordinat finite/range-valid, keterangan kejadian dan konfirmasi titik. Consent berbagi kontak terpisah, default tidak diberikan.
-- [ ] Simpan file di root privat dengan ID generated server dan validasi MIME/decode; tolak path bebas, traversal dan URL media arbitrer. Batasi teks 4000 karakter. Jangan mengeksekusi instruksi dari caption/media.
-- [ ] Worker persisten memakai job PostgreSQL dengan locking dan lease; restart mengambil ulang job yang belum selesai. Respons percakapan memakai outbox yang sama; tidak bergantung BackgroundTasks atau memori.
+- [x] Buat skema awal PostgreSQL: inbound_events, reports, media, incidents, consent_events, jobs. SQL versi awal disimpan bersama backend; tidak menghapus data lama ketika start.
+- [x] `POST /internal/whatsapp/events` mengembalikan 202 setelah event/job committed. Constraint `(account_id, provider_message_id)` mengembalikan receipt sama untuk replay. Mutasi per percakapan diserialisasi; hasil AI dari revision lama tidak menimpa revisi baru.
+- [x] Ganti smoke echo dengan adapter produksi demo. Plugin menyimpan spool event/media secara atomik sebelum menyelesaikan takeover, lalu mengulang pengiriman ke backend sampai receipt diperoleh. Tidak menjanjikan recovery pesan yang belum diterima gateway.
+- [x] Implementasikan satu draft aktif per pengirim. REPORT baru ketika draft aktif meminta pilihan eksplisit; TRACK dibaca terpisah. Periksa media decode, koordinat finite/range-valid, keterangan kejadian dan konfirmasi titik. Consent berbagi kontak terpisah, default tidak diberikan.
+- [x] Simpan file di root privat dengan ID generated server dan validasi MIME/decode; tolak path bebas, traversal dan URL media arbitrer. Batasi teks 4000 karakter. Jangan mengeksekusi instruksi dari caption/media.
+- [x] Worker persisten memakai job PostgreSQL dengan locking dan lease; restart mengambil ulang job yang belum selesai. Respons percakapan memakai outbox yang sama; tidak bergantung BackgroundTasks atau memori.
 
 **Pemeriksaan:** `python -m unittest discover -s tests -v`; kasus tiga pesan menjadi satu report, replay tidak menambah job, dua warga tidak bertukar data, restart tidak menghilangkan draft, hasil AI revisi lama tidak menimpa revisi baru, consent ditolak tetap memungkinkan laporan tanpa nomor, berkas rusak tetap belum lengkap. Task 2 lolos setelah laporan lengkap nyata tersimpan, belum otomatis dipublikasi.
 

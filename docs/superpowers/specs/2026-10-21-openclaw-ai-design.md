@@ -1,5 +1,9 @@
 # Rancangan OpenClaw dan AI — Pelaporan Kebakaran WhatsApp
 
+> Amendemen 24 Oktober 2026: [audit Knowledge v3 dan keputusan pengguna](../../audit-knowledge-v3-2026-10-24.md) memperinci demo: pin/koordinat kejadian tetap wajib, teks hanya untuk klarifikasi; EXIF opsional dan ketiadaannya saja tidak menahan laporan. Tidak ditambahkan pemberitahuan atau persetujuan khusus pemrosesan laporan/AI. Izin berbagi nomor ke otoritas tetap eksplisit, opsional, dan default tidak diberikan. Pemeriksaan konsistensi lintas sumber serta panduan keselamatan masih merupakan kekurangan implementasi yang tercatat pada audit.
+
+> Amendemen 23 Oktober 2026: pengguna menyetujui beberapa fallback. Ketentuan Vision wajib di bawah digantikan oleh [rancangan fallback](../specs/2026-10-23-web-evidence-fallback-design.md): SerpApi utama, Vision hanya opt-in, lokal sebagai bukti tambahan, dan review manual pending jika web unavailable. Gerbang Task 1 memerlukan minimal satu provider web nyata; lokal/fixture/manual pending tidak cukup. Rencana tetap lima task berurutan.
+
 Dibuat: 21 Oktober 2026. Diperbarui: 22 Oktober 2026 berdasarkan Knowledge Document v3. Status: rancangan turunan untuk review; rekomendasi bukan keputusan implementasi.
 
 Acuan utama: [Knowledge Document v3](../../../Knowledge_Doc_Terbaru_DeveloperDay_Karhutla_2026.md). **[FIX]** berasal dari keputusan v3; **[REKOMENDASI]** belum disetujui; **[RISET]** belum ditentukan/diuji. Bagian teknis tanpa label FIX tetap merupakan usulan rancangan. Nomor tanggal pada nama file dipertahankan agar tautan sebelumnya tetap berlaku.
@@ -205,7 +209,7 @@ Niat pencocokan web/metadata dipertahankan v3. Google Cloud Vision Web Detection
 
 **[REKOMENDASI]** Kartu dan overview dibangun dari allowlist field publik, bukan forward teks/media mentah. Ketelitian lokasi dan redaksi foto harus disepakati: v3 meminta lokasi serta foto overview, tetapi detail sensitif tetap dibatasi. Jangan menampilkan GPS pengisi form, identitas atau nomor pelapor kepada publik.
 
-Consent kontak default tidak diberikan. Simpan keputusan eksplisit, sumber pesan, waktu, cakupan, dan versi pertanyaan. Penolakan berbagi nomor tidak menghentikan distribusi tanpa nomor. Consent kontak dipisahkan dari persetujuan pemrosesan data. Bila tujuan belum tersedia, tampilkan kegagalan routing dan kontak cadangan yang telah diverifikasi, bukan klaim terkirim.
+Consent kontak default tidak diberikan. Simpan keputusan eksplisit, sumber pesan, waktu, cakupan, dan versi pertanyaan. Penolakan berbagi nomor tidak menghentikan distribusi tanpa nomor. Untuk demo, keputusan pengguna 24 Oktober menetapkan tanpa pemberitahuan atau persetujuan khusus pemrosesan laporan/AI; ini tidak memberikan consent berbagi nomor secara otomatis. Bila tujuan belum tersedia, tampilkan kegagalan routing dan kontak cadangan yang telah diverifikasi, bukan klaim terkirim.
 
 ## 12. Status pengiriman, konfirmasi publik, dan TRACK
 
@@ -328,7 +332,7 @@ Saat implementasi dimulai, tinggalkan satu pemeriksaan otomatis kecil untuk atur
 | Status | Area | Posisi terkini |
 | --- | --- | --- |
 | FIX | Pilot | Satu wilayah; belum bermitra resmi; demo simulasi/nomor uji |
-| FIX | Input laporan | Foto/video wajib, lokasi teks/shareloc diperjelas, keterangan minimum |
+| FIX demo, amendemen 24 Oktober | Input laporan | Foto/video wajib, pin/koordinat kejadian terkonfirmasi wajib, teks hanya untuk klarifikasi, keterangan minimum; EXIF opsional |
 | FIX | Link publik | /laporan/{slug_id}, konfirmasi opsional, banyak kontribusi |
 | FIX MVP | Radius | <=2 km diperiksa server; bukan bukti autentikasi atau batas ilmiah |
 | FIX | Form | Valid/invalid; deskripsi/foto opsional; solved hanya untuk valid |
@@ -338,7 +342,8 @@ Saat implementasi dimulai, tinggalkan satu pemeriksaan otomatis kecil untuk atur
 | Belum diputuskan | Agregasi publik | Konflik, solved setelah satu kontribusi, identitas/anti-spam, independensi |
 | RISET | GPS | Akurasi, usia fix, spoofing, usability dan kondisi sinyal buruk |
 | RISET | AI dan geospasial | Bobot, threshold, radius/jendela FIRMS dan pencocokan insiden, ground truth |
-| Belum diputuskan | Privasi | Redaksi media/lokasi publik, retensi, persetujuan pemrosesan/provider |
+| FIX demo, amendemen 24 Oktober | Pemrosesan laporan/provider | Tanpa pemberitahuan atau persetujuan khusus; izin berbagi nomor tetap eksplisit, terpisah, opsional, dan default tidak diberikan |
+| Belum diputuskan untuk produk | Privasi | Rincian redaksi media/lokasi publik dan retensi di luar parameter demo |
 
 Radius publik 2 km berbeda dari radius pencocokan FIRMS maupun deduplikasi. Jangan memakai satu parameter untuk ketiganya. Rekomendasi bukan persetujuan tim; update dokumentasi ini tidak mengotorisasi implementasi, pengiriman ke instansi, atau pengujian lapangan.
 

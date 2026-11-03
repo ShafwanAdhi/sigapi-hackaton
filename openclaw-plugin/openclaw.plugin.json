@@ -1,13 +1,15 @@
 {
   "id": "sigapi-validation-demo",
-  "name": "SIGAPI validation smoke",
-  "description": "Private WhatsApp smoke bridge; no publication or persistent intake yet.",
+  "name": "SIGAPI persistent intake",
+  "description": "Private WhatsApp intake with durable spool and reply outbox; no publication.",
+  "activation": { "onStartup": true },
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
     "required": ["allowSenders"],
     "properties": {
-      "allowSenders": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+      "allowSenders": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+      "outboundRecipients": { "type": "array", "maxItems": 2, "items": { "type": "string", "pattern": "^\\+[1-9][0-9]{7,14}$" } }
     }
   }
 }
