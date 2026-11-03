@@ -53,9 +53,9 @@ def install_admin_routes(app,store,root):
               count(*) FILTER(WHERE created_at>=(date_trunc('day',now() AT TIME ZONE 'Asia/Jakarta') AT TIME ZONE 'Asia/Jakarta')) today,
               count(*) FILTER(WHERE status<>'complete') incomplete,
               count(*) FILTER(WHERE analysis IS NULL OR analysis->'decision'->>'action'<>'eligible') unverified,
-              count(*) FILTER(WHERE EXISTS(SELECT 1 FROM outbox o WHERE o.incident_id=reports.incident_id AND o.audience<>'reporter' AND o.state='sent')
+              count(*) FILTER(WHERE EXISTS(SELECT 1 FROM outbox o JOIN incidents i ON i.id=o.incident_id WHERE o.incident_id=reports.incident_id AND o.incident_revision=i.revision AND o.audience<>'reporter' AND o.state='sent' AND nullif(o.provider_message_id,'') IS NOT NULL)
                 AND NOT EXISTS(SELECT 1 FROM outbox o JOIN incidents i ON i.id=o.incident_id WHERE o.incident_id=reports.incident_id AND o.incident_revision=i.revision
-                  AND o.audience<>'reporter' AND o.state NOT IN ('sent','cancelled'))) forwarded
+                  AND o.audience<>'reporter' AND (o.state<>'sent' OR nullif(o.provider_message_id,'') IS NULL))) forwarded
               FROM reports WHERE region_code=%s""",(region,)).fetchone()
             rows=db.execute('SELECT * FROM reports WHERE region_code=%s ORDER BY created_at DESC LIMIT 8',(region,)).fetchall()
         return {'region_code':region,'counts':counts,'recent':[report_card(r) for r in rows]}

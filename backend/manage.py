@@ -62,7 +62,7 @@ def main():
             app=create_web_app(store,media,secure_cookies=os.environ.get('SIGAPI_INSECURE_LOCAL_COOKIE')!='true');port=8012
         uvicorn.run(app,host=os.environ.get('SIGAPI_BIND','127.0.0.1'),port=port,access_log=False,
                     proxy_headers=True,forwarded_allow_ips=os.environ.get('SIGAPI_TRUSTED_PROXIES','127.0.0.1'),
-                    limit_concurrency=12 if args.command=='web' else 8,ws='none')
+                    limit_concurrency=4 if args.command=='web' else 8,ws='none')
     elif args.command=='intake-worker':
         from backend.worker import run_worker
         run_worker(store,media)

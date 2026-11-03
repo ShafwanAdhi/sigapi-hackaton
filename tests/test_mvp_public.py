@@ -13,6 +13,19 @@ from backend.mvp_store import MvpStore
 from backend.web_api import create_web_app
 
 
+class PhotoResourceTests(unittest.TestCase):
+    def test_large_compressed_raster_rejected_before_decode(self):
+        from backend.public import sanitize_photo
+        from fastapi import HTTPException
+        from unittest.mock import patch
+        data=io.BytesIO()
+        Image.new('RGB',(5000,5000)).save(data,'PNG')
+        with patch('PIL.PngImagePlugin.PngImageFile.load',side_effect=AssertionError('must not decode')):
+            with self.assertRaises(HTTPException) as result:
+                sanitize_photo(data.getvalue())
+        self.assertEqual(result.exception.status_code,422)
+
+
 @unittest.skipUnless(DSN, 'Requires separate test database')
 class PublicVerificationTests(unittest.TestCase):
     def setUp(self):

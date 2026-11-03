@@ -5,6 +5,7 @@ WORKDIR /opt/openclaw
 COPY deploy/gateway-package.json ./package.json
 COPY deploy/gateway-package-lock.json ./package-lock.json
 RUN npm ci --omit=dev --no-audit --no-fund --ignore-scripts
+RUN node node_modules/openclaw/scripts/postinstall-bundled-plugins.mjs
 COPY openclaw-plugin /app/openclaw-plugin
 COPY deploy/gateway-init.mjs /app/gateway-init.mjs
 RUN mkdir -p /gateway/state && chown -R node:node /gateway

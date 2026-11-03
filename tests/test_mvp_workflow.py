@@ -14,6 +14,53 @@ class WorkflowRegressionTests(unittest.TestCase):
     complete=fixtures.EngineTests.complete
     run_analysis=fixtures.EngineTests.run_analysis
 
+    def test_correction_withdraws_publication_before_extraction(self):
+        self.complete();report=self.run_analysis(FakeServices())
+        self.ingest('Koreksi, foto ini kejadian kemarin')
+        with self.store.connect() as db:
+            self.assertTrue(db.execute('SELECT withdrawn FROM public_incidents WHERE incident_id=%s',(report['incident_id'],)).fetchone()['withdrawn'])
+
+    def test_pending_track_defers_valid_delivery(self):
+        self.complete();report=self.run_analysis(FakeServices())
+        with self.store.connect() as db:
+            row=db.execute("UPDATE outbox SET state='leased',lease_token=%s,lease_until=now()+interval '60 seconds' WHERE id=(SELECT id FROM outbox WHERE report_id=%s AND audience='authority' LIMIT 1) RETURNING *",(uuid4(),report['id'])).fetchone()
+        self.store.accept(dict(account_id=self.account,provider_message_id=uuid4().hex,sender_ref=self.sender,
+          conversation_id=self.sender,received_at=fixtures.NOW.isoformat(),text='TRACK',media_refs=[],location=None,from_me=False))
+        self.assertFalse(self.store.start_send(row['id'],row['lease_token']))
+        with self.store.connect() as db:
+            self.assertEqual(db.execute('SELECT state FROM outbox WHERE id=%s',(row['id'],)).fetchone()['state'],'pending')
+
+    def test_requeued_destination_refreshes_target_version(self):
+        self.complete();report=self.run_analysis(FakeServices())
+        engine=AnalysisEngine(self.store,self.root,self.config,services=FakeServices())
+        with self.store.connect() as db:
+            incident=db.execute('SELECT * FROM incidents WHERE id=%s',(report['incident_id'],)).fetchone()
+            db.execute("UPDATE outbox SET state='cancelled' WHERE report_id=%s AND audience='authority'",(report['id'],))
+            engine._queue_destination(db,report,incident,'authority','authority',{'account_id':self.account,'number':'+15551234567','version':7})
+            row=db.execute("SELECT * FROM outbox WHERE report_id=%s AND audience='authority'",(report['id'],)).fetchone()
+        self.assertEqual((row['sender_ref'],row['destination_version']),('+15551234567',7))
+
+    def test_public_projection_uses_retained_incident_anchor(self):
+        from backend.public import publish
+        self.complete();report=self.run_analysis(FakeServices())
+        with self.store.connect() as db:
+            incident=db.execute('SELECT * FROM incidents WHERE id=%s',(report['incident_id'],)).fetchone()
+            report['state']['location']={'latitude':-7.96,'longitude':112.61}
+            publish(db,report,incident)
+            projection=db.execute('SELECT projection FROM public_incidents WHERE incident_id=%s',(incident['id'],)).fetchone()['projection']
+        self.assertEqual(projection['location'],incident['location'])
+
+    def test_held_recheck_withdraws_previous_public_projection(self):
+        self.complete();report=self.run_analysis(FakeServices())
+        with self.store.connect() as db:
+            self.store.enqueue(db,report['id'],report['revision'],report['latest_seq'],'evidence')
+            db.execute("UPDATE analysis_jobs SET state='pending' WHERE report_id=%s AND kind='evidence'",(report['id'],))
+        services=FakeServices();services.consistency=lambda *args:{'outcome':'conflict','reasons':[],'source_refs':[]}
+        report=self.run_analysis(services)
+        self.assertEqual(report['analysis']['decision']['action'],'held')
+        with self.store.connect() as db:
+            self.assertTrue(db.execute('SELECT withdrawn FROM public_incidents WHERE incident_id=%s',(report['incident_id'],)).fetchone()['withdrawn'])
+
     def test_new_draft_does_not_strand_previous_report_analysis(self):
         old=self.complete()
         self.ingest('REPORT');new=self.ingest('BARU')

@@ -194,9 +194,9 @@ class MvpStore(AnalysisStore):
         text='Laporan '+str(report['id'])[:8]+'. Data: '+report['status']+'. Pemeriksaan: '+decision.get('action','menunggu')+'.'
         if report['incident_id']:
             incident=db.execute('SELECT * FROM incidents WHERE id=%s',(report['incident_id'],)).fetchone()
-            delivery=db.execute("SELECT audience,state FROM outbox WHERE incident_id=%s AND incident_revision=%s AND audience<>'reporter' AND state<>'cancelled' ORDER BY created_at",(incident['id'],incident['revision'])).fetchall()
+            delivery=db.execute("SELECT audience,state,provider_message_id FROM outbox WHERE incident_id=%s AND incident_revision=%s AND audience<>'reporter' ORDER BY created_at",(incident['id'],incident['revision'])).fetchall()
             if delivery:
-                sent=sum(r['state']=='sent' for r in delivery)
+                sent=sum(r['state']=='sent' and bool(r['provider_message_id']) for r in delivery)
                 text+=' Pengiriman '+str(sent)+'/'+str(len(delivery))+' tujuan memiliki receipt. '+', '.join(r['audience']+'='+r['state'] for r in delivery)+'.'
             else:text+=' Belum ada pengiriman ke tujuan.'
             from backend.public import verification_summary

@@ -16,6 +16,20 @@ class OperationsTests(unittest.TestCase):
         self.folder=tempfile.TemporaryDirectory();self.addCleanup(self.folder.cleanup)
         self.root=Path(self.folder.name)
 
+    def test_failed_media_deletion_retries_after_database_removal(self):
+        from unittest.mock import patch
+        key=str(uuid4())+'.jpg';path=self.root/key;path.write_bytes(b'private')
+        with self.store.connect() as db:
+            db.execute('INSERT INTO file_deletions(storage_key) VALUES(%s)',(key,))
+        with patch('pathlib.Path.unlink',side_effect=PermissionError('fixture')):
+            purge(self.store,self.root,dry_run=False)
+        with self.store.connect() as db:
+            self.assertIsNotNone(db.execute('SELECT 1 FROM file_deletions WHERE storage_key=%s',(key,)).fetchone())
+        purge(self.store,self.root,dry_run=False)
+        self.assertFalse(path.exists())
+        with self.store.connect() as db:
+            self.assertIsNone(db.execute('SELECT 1 FROM file_deletions WHERE storage_key=%s',(key,)).fetchone())
+
     def test_purge_dry_run_then_apply_preserves_configuration_and_fresh_data(self):
         report=uuid4();account='purge-'+uuid4().hex
         with self.store.connect() as db:

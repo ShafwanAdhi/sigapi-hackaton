@@ -13,6 +13,8 @@ def reason_required(reason):
 def requeue(store,db,r):
     revision=r['revision']+1
     db.execute('UPDATE reports SET revision=%s,analysis=NULL WHERE id=%s',(revision,r['id']))
+    if r['incident_id']:
+        db.execute('UPDATE public_incidents SET withdrawn=true WHERE incident_id=%s',(r['incident_id'],))
     db.execute("UPDATE analysis_jobs SET state='superseded' WHERE report_id=%s AND state='pending'",(r['id'],))
     store.enqueue(db,r['id'],revision,r['latest_seq'],'evidence')
     return revision

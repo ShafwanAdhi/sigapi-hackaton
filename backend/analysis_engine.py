@@ -236,8 +236,9 @@ class AnalysisEngine:
             text+='\nKonfirmasi publik: '+os.environ.get('SIGAPI_PUBLIC_URL','http://127.0.0.1:5173').rstrip('/')+'/laporan/'+incident['slug']
         if existing:
             db.execute("""UPDATE outbox SET report_id=%s,report_revision=%s,input_seq=%s,text=%s,escalation=%s,
-              state='pending',lease_token=NULL,lease_until=NULL,reason=NULL WHERE id=%s""",
-              (r['id'],r['revision'],r['latest_seq'],text,escalation,existing['id']))
+              account_id=%s,sender_ref=%s,audience=%s,destination_version=%s,
+              state='pending',available_at=now(),lease_token=NULL,lease_until=NULL,reason=NULL WHERE id=%s""",
+              (r['id'],r['revision'],r['latest_seq'],text,escalation,dest['account_id'],dest['number'],role,dest.get('version'),existing['id']))
             return
         out=uuid4();key=f'delivery:{incident["id"]}:{incident["revision"]}:{destination_id}'
         db.execute('''INSERT INTO outbox(id,report_id,account_id,sender_ref,text,source_key,audience,destination_id,
@@ -351,6 +352,8 @@ class AnalysisEngine:
                 if decision['action']=='eligible':
                     from backend.public import publish
                     publish(db,r,incident)
+                else:
+                    db.execute('UPDATE public_incidents SET withdrawn=true WHERE incident_id=%s',(incident['id'],))
                 if decision['escalate']:self._queue(db,r,incident,'authority',escalation=True)
                 for role in decision['destinations']:self._queue(db,r,incident,role,escalation=decision['escalate'] and role=='authority')
             if decision['action']=='held':

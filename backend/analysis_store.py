@@ -33,6 +33,8 @@ class AnalysisStore(Store):
     def on_intake(self,db,report_id,seq):
         r=db.execute('SELECT * FROM reports WHERE id=%s FOR UPDATE',(report_id,)).fetchone()
         if not r['task3_enabled']:return
+        if r['incident_id']:
+            db.execute('UPDATE public_incidents SET withdrawn=true WHERE incident_id=%s',(r['incident_id'],))
         db.execute('UPDATE reports SET latest_seq=%s WHERE id=%s',(seq,report_id))
         db.execute("UPDATE analysis_jobs SET state='superseded' WHERE report_id=%s AND state='pending'",(report_id,))
         self.enqueue(db,report_id,r['revision'],seq,'extract')
@@ -139,6 +141,8 @@ class AnalysisStore(Store):
             changed=state.get('description')!=r['state'].get('description') or facts!=prior
             meaningful=any(facts.get(k)!=prior.get(k) for k in ('observed_at','category','input_evidence')) or facts['risk']['level']!=prior.get('risk',{}).get('level') or not r['state'].get('description') and bool(state.get('description'))
             revision=r['revision']+int(changed)
+            if changed and r['incident_id']:
+                db.execute('UPDATE public_incidents SET withdrawn=true WHERE incident_id=%s',(r['incident_id'],))
             db.execute('UPDATE reports SET state=%s,status=%s,facts=%s,revision=%s,analysis=NULL,clarification_count=CASE WHEN %s THEN 0 ELSE clarification_count END WHERE id=%s',
                        (Jsonb(state),state['status'],Jsonb(facts),revision,meaningful,r['id']))
             r=dict(r,state=state,status=state['status'],facts=facts,revision=revision)
@@ -197,7 +201,9 @@ class AnalysisStore(Store):
             valid=True
             if row['report_revision'] is not None:
                 valid=bool(r and r['lifecycle']=='open' and r['revision']==row['report_revision'] and r['latest_seq']==row['input_seq'])
-                if r and db.execute('SELECT 1 FROM inbound_events WHERE account_id=%s AND sender_ref=%s AND seq>%s AND NOT processed LIMIT 1',(r['account_id'],r['sender_ref'],r['latest_seq'])).fetchone():valid=False
+                if valid and db.execute('SELECT 1 FROM inbound_events WHERE account_id=%s AND sender_ref=%s AND seq>%s AND NOT processed LIMIT 1',(r['account_id'],r['sender_ref'],r['latest_seq'])).fetchone():
+                    db.execute("UPDATE outbox SET state='pending',available_at=now()+interval '1 second',lease_token=NULL,lease_until=NULL,reason='INPUT_PENDING' WHERE id=%s",(id,))
+                    return False
             if row['audience']!='reporter':
                 valid=valid and self.config.allowed(row['audience'],row['sender_ref'],row['account_id'])
                 if row['destination_version'] is not None:

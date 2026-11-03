@@ -1,6 +1,7 @@
 """Public and authenticated web API; never mounts the transport API."""
 import re
 import os
+import asyncio
 from pathlib import Path
 from uuid import UUID, uuid4
 import psycopg
@@ -10,6 +11,7 @@ from fastapi.responses import JSONResponse
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 from backend import auth
+from starlette.concurrency import run_in_threadpool
 
 
 class LoginBody(BaseModel):
@@ -35,10 +37,50 @@ class TestSend(BaseModel):
     request_id: UUID
 
 
+class BodyLimit:
+    """Count streaming bytes without duplicating multipart bodies in RAM."""
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope['type'] != 'http' or scope['method'] not in ('POST','PATCH','PUT'):
+            return await self.app(scope, receive, send)
+        limit = 11*1024*1024 if scope['path'].endswith('/verifications') else 64*1024
+        size = 0
+        oversized = False
+        replacement_sent = False
+
+        async def bounded_receive():
+            nonlocal size, oversized
+            message = await receive()
+            if message['type'] == 'http.request':
+                size += len(message.get('body', b''))
+                if size > limit:
+                    oversized = True
+                    raise HTTPException(413, 'BODY_TOO_LARGE')
+            return message
+
+        async def bounded_send(message):
+            nonlocal replacement_sent
+            if oversized:
+                if replacement_sent:
+                    return
+                if message['type'] == 'http.response.start':
+                    message = {'type':'http.response.start','status':413,
+                               'headers':[(b'content-type',b'application/json'),(b'cache-control',b'no-store')]}
+                elif message['type'] == 'http.response.body':
+                    message = {'type':'http.response.body','body':b'{"detail":"BODY_TOO_LARGE"}','more_body':False}
+                    replacement_sent = True
+            await send(message)
+
+        await self.app(scope, bounded_receive, bounded_send)
+
+
 def create_web_app(store, media_root, *, secure_cookies=True):
     root = Path(media_root).resolve()
     root.mkdir(parents=True, exist_ok=True)
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+    photo_slot = asyncio.Semaphore(1)
 
     @app.exception_handler(RequestValidationError)
     async def invalid(request, exc):
@@ -60,19 +102,12 @@ def create_web_app(store, media_root, *, secure_cookies=True):
                 request.state.admin = auth.authenticate(store, request, mutation=request.method not in ('GET','HEAD','OPTIONS'))
             except HTTPException as exc:
                 return JSONResponse({'detail':exc.detail}, status_code=exc.status_code)
-        if request.method in ('POST','PATCH','PUT'):
-            limit=11*1024*1024 if request.url.path.endswith('/verifications') else 64*1024
-            size=0;chunks=[]
-            async for chunk in request.stream():
-                size+=len(chunk)
-                if size>limit:
-                    return JSONResponse({'detail':'BODY_TOO_LARGE'},status_code=413)
-                chunks.append(chunk)
-            request._body=b''.join(chunks)
         response = await call_next(request)
         response.headers.update({'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff',
                                  'Referrer-Policy':'no-referrer'})
         return response
+
+    app.add_middleware(BodyLimit)
 
     @app.get('/healthz')
     def health():
@@ -94,7 +129,8 @@ def create_web_app(store, media_root, *, secure_cookies=True):
                 raise HTTPException(422,'INVALID_PHOTO')
             photo=await upload.read(10*1024*1024+1) if upload else None
             values={k:v for k,v in form.items() if k!='photo'}
-            return submit(store,root,slug,values,photo,request.client.host)
+            async with photo_slot:
+                return await run_in_threadpool(submit,store,root,slug,values,photo,request.client.host)
 
     @app.get('/api/laporan/{slug}/photo')
     def public_photo(slug: str):

@@ -25,6 +25,10 @@ class AdminAuthTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         return {'X-CSRF-Token': response.json()['csrf_token']}
 
+    def test_streaming_body_limit_rejects_oversized_json(self):
+        response=self.client.post('/api/admin/auth/login',content=b'{"username":"'+b'a'*70000+b'"}',headers={'Content-Type':'application/json'})
+        self.assertEqual(response.status_code,413,response.text)
+
     def test_login_uses_secure_cookie_and_hashed_password(self):
         self.assertEqual(self.client.get('/api/admin/reports').status_code, 401)
         headers = self.login()

@@ -59,6 +59,8 @@ def purge(store,media_root,*,dry_run=True,now=None,gateway_root=None):
         files.extend(r['photo_key'] for r in db.execute('SELECT photo_key FROM verification_events WHERE incident_id=ANY(%s::uuid[]) OR created_at<%s',(incidents,cutoff)).fetchall() if r['photo_key'])
         result={'dry_run':dry_run,'reports':len(ids),'incidents':len(incidents),'media':len(files)}
         if dry_run:return result
+        for key in set(files):
+            db.execute('INSERT INTO file_deletions(storage_key) VALUES(%s) ON CONFLICT DO NOTHING',(key,))
         db.execute("UPDATE reports SET lifecycle='expired' WHERE id=ANY(%s::uuid[])",(ids,))
         outbox=[r['id'] for r in db.execute('SELECT id FROM outbox WHERE report_id=ANY(%s::uuid[]) OR incident_id=ANY(%s::uuid[]) OR created_at<%s',(ids,incidents,cutoff)).fetchall()]
         db.execute('DELETE FROM delivery_events WHERE outbox_id=ANY(%s::uuid[]) OR report_id=ANY(%s::uuid[])',(outbox,ids))
@@ -82,9 +84,18 @@ def purge(store,media_root,*,dry_run=True,now=None,gateway_root=None):
         # Retain spent operation counters; never reset paid-provider retry budgets.
         db.execute('UPDATE provider_operations SET result=NULL WHERE created_at<%s',(cutoff,))
         store.audit(db,None,'RETENTION_PURGE',result,'system_retention')
-    for key in set(files):
+    with store.connect() as db:
+        pending=db.execute('SELECT storage_key FROM file_deletions').fetchall()
+    for item in pending:
+        key=item['storage_key']
         path=(root/key).resolve()
-        if path.parent==root and path.is_file():path.unlink()
+        if path.parent!=root:continue
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            continue
+        with store.connect() as db:
+            db.execute('DELETE FROM file_deletions WHERE storage_key=%s',(key,))
     # Remove orphan derivatives/temporary uploads only; arbitrary config files stay.
     for path in root.iterdir():
         if path.is_file() and (path.name.startswith(('public-','verification-')) or path.suffix=='.part') and path.stat().st_mtime<cutoff.timestamp():

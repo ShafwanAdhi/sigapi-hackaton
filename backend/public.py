@@ -59,7 +59,7 @@ def publish(db, report, incident):
     label={'forest_land':'hutan/lahan','building':'bangunan'}.get(category,'kejadian')
     projection={'reference':'SIGAPI-'+str(incident['id'])[:8].upper(),
                 'title':'Laporan kebakaran '+label,'category':category,
-                'location_name':'Kota Malang','location':report['state']['location'],
+                'location_name':'Kota Malang','location':incident['location'],
                 'observed_at':report['facts'].get('observed_at'),
                 'summary':'Laporan warga yang memenuhi pemeriksaan awal. Belum dikonfirmasi resmi.'}
     db.execute('''INSERT INTO public_incidents(incident_id,location_version,projection) VALUES(%s,%s,%s)
@@ -82,11 +82,12 @@ def sanitize_photo(raw):
         raise HTTPException(413,'PHOTO_TOO_LARGE')
     try:
         with Image.open(io.BytesIO(raw)) as im:
-            if im.format not in ('JPEG','PNG','WEBP') or im.width*im.height>25_000_000:
+            if im.format not in ('JPEG','PNG','WEBP') or im.width*im.height>12_000_000:
                 raise ValueError()
-            im.load()
+            # JPEG draft decoding avoids allocating the full sensor-size raster.
+            im.draft('RGB',(1280,1280))
+            im.thumbnail((1280,1280))
             output=ImageOps.exif_transpose(im).convert('RGB')
-            output.thumbnail((1280,1280))
             buf=io.BytesIO();output.save(buf,'JPEG',quality=85)
             return buf.getvalue()
     except (ValueError,OSError,UnidentifiedImageError,Image.DecompressionBombError):

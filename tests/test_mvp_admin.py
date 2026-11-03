@@ -5,6 +5,20 @@ from tests import test_mvp_auth as fixtures
 
 
 class DashboardTests(fixtures.AdminAuthTests):
+    def test_historical_receipt_and_cancelled_current_destination_are_not_complete(self):
+        self.login()
+        before=self.client.get('/api/admin/overview').json()['counts']['forwarded']
+        report=self.report();incident=uuid4()
+        with self.store.connect() as db:
+            db.execute('INSERT INTO incidents(id,revision) VALUES(%s,2)',(incident,))
+            db.execute('UPDATE reports SET incident_id=%s WHERE id=%s',(incident,report))
+            db.execute("INSERT INTO outbox(id,report_id,account_id,sender_ref,text,audience,incident_id,incident_revision,state,provider_message_id) VALUES(%s,%s,'fixture','+15551234567','fixture','authority',%s,1,'sent','old-receipt')",(uuid4(),report,incident))
+        self.assertEqual(self.client.get('/api/admin/overview').json()['counts']['forwarded'],before)
+        with self.store.connect() as db:
+            for state,receipt in [('sent','current-receipt'),('cancelled',None)]:
+                db.execute("INSERT INTO outbox(id,report_id,account_id,sender_ref,text,audience,incident_id,incident_revision,state,provider_message_id) VALUES(%s,%s,'fixture','+15551234567','fixture','authority',%s,2,%s,%s)",(uuid4(),report,incident,state,receipt))
+        self.assertEqual(self.client.get('/api/admin/overview').json()['counts']['forwarded'],before)
+
     def report(self,region='35.73',consent=False):
         report_id=uuid4()
         with self.store.connect() as db:
