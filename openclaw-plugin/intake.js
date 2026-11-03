@@ -15,8 +15,9 @@ function atomicJson(file,value) {
 }
 
 export function createIntakeBridge({token,allowSenders,outboundRecipients=[],accounts=['default'],spoolRoot,mediaRoot,
-  fetchImpl=fetch,sendReply,diagnostic=()=>{}}) {
-  if(typeof token!=='string'||token.length<32||!allowSenders?.length||!spoolRoot||!mediaRoot)throw Error('INTAKE_CONFIG_REQUIRED');
+  publicMode=false,backendUrl='http://127.0.0.1:8011',fetchImpl=fetch,sendReply,diagnostic=()=>{}}) {
+  if(typeof token!=='string'||token.length<32||(!publicMode&&!allowSenders?.length)||!spoolRoot||!mediaRoot)throw Error('INTAKE_CONFIG_REQUIRED');
+  const admittedSender=value=>publicMode ? /^\+[1-9][0-9]{7,14}$/.test(value??'') : allowSenders.includes(value);
   const root=path.resolve(spoolRoot), media=path.resolve(mediaRoot);
   const recipients=[...new Set([...allowSenders,...outboundRecipients])];
   fs.mkdirSync(root,{recursive:true,mode:0o700});
@@ -24,7 +25,7 @@ export function createIntakeBridge({token,allowSenders,outboundRecipients=[],acc
     const parts=[c.accountId,sender(e,c),c.messageId??e.messageId];
     return parts.every(x=>typeof x==='string'&&x.length) ? crypto.createHash('sha256').update(JSON.stringify(parts)).digest('hex'):null;
   };
-  const allowed=(e,c)=>(c.channelId??e.channel)==='whatsapp'&&accounts.includes(c.accountId)&&allowSenders.includes(sender(e,c));
+  const allowed=(e,c)=>(c.channelId??e.channel)==='whatsapp'&&accounts.includes(c.accountId)&&admittedSender(sender(e,c));
   const manifest=id=>path.join(root,id,'event.json');
   const read=id=>JSON.parse(fs.readFileSync(manifest(id),'utf8'));
   const entries=()=>fs.readdirSync(root).filter(n=>/^[0-9a-f]{64}$/.test(n)).map(id=>({id,item:read(id)}));
@@ -42,7 +43,7 @@ export function createIntakeBridge({token,allowSenders,outboundRecipients=[],acc
     return task;
   }
   const request=async(route,body)=>{
-    const r=await fetchImpl('http://127.0.0.1:8011/internal/'+route,{method:'POST',signal:AbortSignal.timeout(5000),
+    const r=await fetchImpl(backendUrl+'/internal/'+route,{method:'POST',signal:AbortSignal.timeout(5000),
       headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(!r.ok)throw Error('BACKEND_UNAVAILABLE');
     return {status:r.status,value:await r.json()};
@@ -53,11 +54,15 @@ export function createIntakeBridge({token,allowSenders,outboundRecipients=[],acc
     const operation=(async()=>{
       const item=read(id);
       if(item.receipt)return true;
-      if(!accounts.includes(item.event.account_id)||!allowSenders.includes(item.event.sender_ref))return false;
+      if(!accounts.includes(item.event.account_id)||!admittedSender(item.event.sender_ref))return false;
+      if(publicMode&&!item.admitted) {
+        await request('admission',{account_id:item.event.account_id,sender_ref:item.event.sender_ref,provider_message_id:item.event.provider_message_id});
+        item.admitted=true;atomicJson(manifest(id),item);
+      }
       for(const file of item.files) {
         if(file.id)continue;
         if(!/^[0-9]+\.bin$/.test(file.file)||!['image','video'].includes(file.kind))throw Error('INVALID_SPOOL');
-        const response=await fetchImpl('http://127.0.0.1:8011/internal/media',{
+        const response=await fetchImpl(backendUrl+'/internal/media',{
           method:'POST',signal:AbortSignal.timeout(10000),headers:{Authorization:`Bearer ${token}`,
             'Content-Type':file.contentType??'application/octet-stream','X-Account-Id':item.event.account_id,
             'X-Sender-Ref':item.event.sender_ref,'X-Provider-Message-Id':item.event.provider_message_id,
@@ -134,10 +139,10 @@ export function createIntakeBridge({token,allowSenders,outboundRecipients=[],acc
     flushSpool:flushOrdered,
     async deliverOne(isCurrent=()=>true) {
       if(!sendReply||!isCurrent())return;
-      const {value}=await request('outbox/claim',{accounts,senders:recipients});
+      const {value}=await request('outbox/claim',{accounts,senders:recipients,...(publicMode?{public_reporters:true}:{})});
       const item=value.item;
       if(!item)return;
-      if(!accounts.includes(item.account_id)||!recipients.includes(item.sender_ref)||
+      if(!accounts.includes(item.account_id)||(publicMode ? item.recipient_authorized!==true||!admittedSender(item.sender_ref) : !recipients.includes(item.sender_ref))||
          typeof item.text!=='string'||item.text.length>1500||!isCurrent())return;
       const start=await request(`outbox/${item.id}/start`,{lease_token:item.lease_token});
       if(!start.value.started||!isCurrent())return;
@@ -159,7 +164,8 @@ export function registerIntake(api) {
   const state=process.env.OPENCLAW_STATE_DIR;
   if(!state)throw Error('OPENCLAW_STATE_DIR_REQUIRED');
   let serviceContext, running=false, timer, inflight;
-  const bridge=createIntakeBridge({token:process.env.INTERNAL_API_TOKEN,allowSenders:api.pluginConfig?.allowSenders,
+  const bridge=createIntakeBridge({token:process.env.INTERNAL_API_TOKEN,allowSenders:api.pluginConfig?.allowSenders??[],
+    publicMode:api.pluginConfig?.publicMode===true,backendUrl:process.env.SIGAPI_INTERNAL_URL??'http://127.0.0.1:8011',
     outboundRecipients:api.pluginConfig?.outboundRecipients??[],
     spoolRoot:path.resolve(state,'../transport-spool'),mediaRoot:path.join(state,'media/inbound'),
     diagnostic:code=>api.logger.warn(`[sigapi] ${code}`),
@@ -170,10 +176,19 @@ export function registerIntake(api) {
     }});
   api.on('message_received',bridge.received);
   api.on('before_dispatch',bridge.dispatch);
+  let lastHeartbeat=0;
   const tick=()=>{
     if(!running)return;
     inflight=(async()=>{
-      try {await bridge.flushSpool();if(running)await bridge.deliverOne(()=>running);}
+      try {
+        if(Date.now()-lastHeartbeat>30000){
+          const response=await fetch((process.env.SIGAPI_INTERNAL_URL??'http://127.0.0.1:8011')+'/internal/heartbeat',{
+            method:'POST',headers:{Authorization:'Bearer '+process.env.INTERNAL_API_TOKEN,'Content-Type':'application/json'},
+            body:JSON.stringify({service:'gateway'}),signal:AbortSignal.timeout(5000)});
+          if(response.ok){lastHeartbeat=Date.now();fs.writeFileSync(path.resolve(state,'../heartbeat'),String(lastHeartbeat),{mode:0o600});}
+        }
+        await bridge.flushSpool();if(running)await bridge.deliverOne(()=>running);
+      }
       catch {api.logger.warn('[sigapi] OUTBOX_OR_BACKEND_UNAVAILABLE');}
       finally {if(running){timer=setTimeout(tick,2000);timer.unref();}}
     })();

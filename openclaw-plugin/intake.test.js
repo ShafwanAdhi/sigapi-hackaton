@@ -16,6 +16,29 @@ function setup(t, overrides={}) {
 const ctx={channelId:'whatsapp',accountId:'demo',senderId:'team',conversationId:'team-chat',messageId:'message-1'};
 const event={from:'team',content:'KETERANGAN: Api di hutan',messageId:'message-1'};
 
+test('public admission handles a new reporter with a configured internal container URL',async t=>{
+  const urls=[];
+  const {bridge}=setup(t,{publicMode:true,allowSenders:[],backendUrl:'http://internal-api:8011',fetchImpl:async url=>{
+    urls.push(url);
+    return url.endsWith('/admission') ? {ok:true,status:200,json:async()=>({admitted:true})} :
+      {ok:true,status:202,json:async()=>({mode:'intake',persistent_intake:true,receipt_id:'12345678-1234-4234-8234-123456789abc'})};
+  }});
+  const context={...ctx,senderId:'+15550123456'};
+  bridge.received(event,context);
+  assert.equal((await bridge.dispatch({},context)).handled,true);
+  assert.deepEqual(urls,['http://internal-api:8011/internal/admission','http://internal-api:8011/internal/whatsapp/events']);
+});
+
+test('public replies require a backend-authorized recipient; wildcard never authorizes arbitrary delivery',async t=>{
+  const sent=[];let authorized=false;
+  const {bridge}=setup(t,{publicMode:true,allowSenders:[],sendReply:async item=>{sent.push(item.sender_ref);return {messageId:'receipt'};},fetchImpl:async url=>{
+    const item={id:'id',lease_token:'lease',account_id:'demo',sender_ref:'+15550123456',text:'Reply',recipient_authorized:authorized};
+    return {ok:true,status:200,json:async()=>url.endsWith('/claim')?{item}:url.endsWith('/start')?{started:true}:{recorded:true}};
+  }});
+  await bridge.deliverOne();assert.equal(sent.length,0);
+  authorized=true;await bridge.deliverOne();assert.deepEqual(sent,['+15550123456']);
+});
+
 test('spool survives restart and lost receipt; replay sends same durable event identity',async t=>{
   const calls=[];
   const {options,bridge}=setup(t,{fetchImpl:async()=>{throw Error('offline');}});
