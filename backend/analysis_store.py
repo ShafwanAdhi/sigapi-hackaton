@@ -17,6 +17,18 @@ class AnalysisStore(Store):
         from backend.task3_config import Task3Config
         self.config=config or Task3Config()
 
+    def destinations(self):
+        return self.config.destinations()
+
+    def allowed(self, role, number, account):
+        return self.config.allowed(role, number, account)
+
+    def region(self):
+        return self.config.region()
+
+    def snapshot(self):
+        return self.config.snapshot()
+
     @staticmethod
     def is_free_text(text):
         s=text.strip().upper()
@@ -205,9 +217,9 @@ class AnalysisStore(Store):
                     db.execute("UPDATE outbox SET state='pending',available_at=now()+interval '1 second',lease_token=NULL,lease_until=NULL,reason='INPUT_PENDING' WHERE id=%s",(id,))
                     return False
             if row['audience']!='reporter':
-                valid=valid and self.config.allowed(row['audience'],row['sender_ref'],row['account_id'])
+                valid=valid and self.allowed(row['audience'],row['sender_ref'],row['account_id'])
                 if row['destination_version'] is not None:
-                    destination=self.config.destinations().get(row['destination_id'])
+                    destination=self.destinations().get(row['destination_id'])
                     valid=valid and bool(destination and destination.get('version')==row['destination_version'])
                 valid=valid and bool(r and row['sender_ref']!=r['sender_ref'])
                 incident=db.execute('SELECT revision,pending_review FROM incidents WHERE id=%s',(row['incident_id'],)).fetchone()
@@ -215,7 +227,7 @@ class AnalysisStore(Store):
                 from backend.geospatial import region_check
                 loc=r['state'].get('location') if r else None
                 valid=valid and bool(r and r['status']=='complete' and r['state']['location_confirmed'] and loc
-                    and region_check(self.config.region(),loc['latitude'],loc['longitude'])=='inside')
+                    and region_check(self.region(),loc['latitude'],loc['longitude'])=='inside')
                 if valid and row['escalation']:
                     source_rows=db.execute('SELECT id,payload FROM inbound_events WHERE report_id=%s ORDER BY seq',(r['id'],)).fetchall()
                     valid=row['audience']=='authority' and threat_claim([{'id':str(s['id']),'text':s['payload'].get('text','')} for s in source_rows])['level']=='high'

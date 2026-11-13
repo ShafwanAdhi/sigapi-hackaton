@@ -144,7 +144,7 @@ class MvpStore(AnalysisStore):
         if pending>=500:raise HTTPException(503,'QUEUE_CAPACITY_REACHED')
 
     def claim_outbox(self,accounts,senders,*,public_reporters=False):
-        approved=[d['number'] for d in self.config.destinations().values() if d['account_id'] in accounts]
+        approved=[d['number'] for d in self.destinations().values() if d['account_id'] in accounts]
         with self.connect() as db:
             approved += [r['number'] for r in db.execute('SELECT number FROM destinations WHERE active AND authorized AND account_id=ANY(%s)',(accounts,)).fetchall()]
         return super().claim_outbox(accounts,list(set(senders+approved)),public_reporters=public_reporters)

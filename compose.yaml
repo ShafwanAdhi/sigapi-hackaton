@@ -102,6 +102,7 @@ services:
       SIGAPI_INTERNAL_URL: http://internal:8011
       SIGAPI_TEST_SENDERS: ${SIGAPI_TEST_SENDERS:-}
       SIGAPI_WHATSAPP_OPEN: 'false'
+      SIGAPI_OUTBOUND_RECIPIENTS: ${SIGAPI_OUTBOUND_RECIPIENTS:-}
     volumes: [gateway:/gateway]
     networks: [private]
     depends_on: {internal: {condition: service_healthy}}

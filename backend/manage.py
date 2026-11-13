@@ -47,7 +47,16 @@ def main():
     if args.command=='status':
         with store.connect() as db:
             heartbeats=db.execute("SELECT service,last_seen,details,last_seen>now()-interval '90 seconds' AS recent FROM service_heartbeats ORDER BY service").fetchall()
-        print(json.dumps({'heartbeats':heartbeats,'region_approved':bool(store.config.region()),'distribution_destinations':len(store.config.destinations()),'settings':store.config.read()},default=str));return
+            destinations=db.execute("SELECT role,count(*) n FROM destinations WHERE region_code='35.73' AND active AND authorized GROUP BY role").fetchall()
+        by_role={row['role']:row['n'] for row in destinations}
+        cfg=store.config.read();recent={row['service']:bool(row['recent']) for row in heartbeats}
+        print(json.dumps({'heartbeats':heartbeats,'region_approved':bool(store.region()),
+            'firms_current':bool(store.snapshot()),'community_destination':'ready' if by_role.get('community') else 'missing',
+            'authority_destination':'ready' if by_role.get('authority') else 'missing',
+            'gateway_heartbeat':'ready' if recent.get('gateway') else 'unknown',
+            'provider_configured':bool(os.environ.get('GROQ_API_KEY') and os.environ.get('GROQ_VISION_MODEL')),
+            'distribution_enabled':bool(cfg.get('distribution_enabled')),'public_intake':bool(cfg.get('public_intake')),
+            'live_gate':'passed' if cfg.get('live_gate_passed') else 'pending','settings':cfg},default=str));return
     if args.command=='health':
         with store.connect() as db:
             row=db.execute("SELECT 1 FROM service_heartbeats WHERE service=%s AND last_seen>now()-interval '90 seconds'",(args.service,)).fetchone()

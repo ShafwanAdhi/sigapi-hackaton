@@ -208,7 +208,7 @@ class AnalysisEngine:
               (r['id'],inc['id'],dist,delta,Jsonb({'outcome':'pending_operator','basis':'spatial_time_candidate','ai':'not_checked','time_basis':'claimed' if observed else 'receipt_only'})))
 
     def _queue(self,db,r,incident,role,*,escalation=False):
-        for destination_id,dest in self.config.destinations().items():
+        for destination_id,dest in self.store.destinations().items():
             if dest.get('role',destination_id)!=role:continue
             category=r['facts'].get('category','unknown')
             if not escalation and category not in dest.get('categories',['forest_land','building','unknown']):continue
@@ -251,7 +251,7 @@ class AnalysisEngine:
         risk=threat_claim(sources)
         if r['status']!='complete' or risk['level']!='high':return
         loc=r['state']['location']
-        if region_check(self.config.region(),loc['latitude'],loc['longitude'])!='inside':return
+        if region_check(self.store.region(),loc['latitude'],loc['longitude'])!='inside':return
         with self.store.connect() as db:
             db.execute('SELECT id FROM analysis_jobs WHERE id=%s FOR UPDATE',(job['id'],))
             db.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s,0))',('incidents:'+r['account_id'],))
@@ -308,9 +308,9 @@ class AnalysisEngine:
             except (ValueError,OSError) as exc:
                 frames.append({'outcome':'unavailable','reason':'MEDIA_CHECK_FAILED'});web.append('unavailable')
                 evidence.append(('media',key,{'outcome':'unavailable','reason':'MEDIA_CHECK_FAILED'}))
-        loc=r['state']['location'];region=region_check(self.config.region(),loc['latitude'],loc['longitude'])
+        loc=r['state']['location'];region=region_check(self.store.region(),loc['latitude'],loc['longitude'])
         observed=r['facts'].get('observed_at')
-        firms=firms_check(self.config.snapshot(),loc['latitude'],loc['longitude'],observed,self.now()) if observed else {'outcome':'unavailable','reason':'TIME_UNKNOWN'}
+        firms=firms_check(self.store.snapshot(),loc['latitude'],loc['longitude'],observed,self.now()) if observed else {'outcome':'unavailable','reason':'TIME_UNKNOWN'}
         consistency=self.services.consistency(sources,frame_refs,metadata_refs)
         with self.store.connect() as db:
             db.execute('SELECT id FROM analysis_jobs WHERE id=%s FOR UPDATE',(job['id'],))
@@ -371,14 +371,14 @@ class AnalysisEngine:
                 count=current['clarification_count']
                 text='Kanal komunitas ditahan. '+(questions.get(reasons[0],'Bukti perlu diperiksa.') if count<4 else 'Batas pertanyaan tercapai; kirim fakta/bukti baru untuk melanjutkan. Tidak ada penerusan otomatis.')
                 db.execute('UPDATE reports SET clarification_count=least(4,clarification_count+1) WHERE id=%s',(r['id'],))
-            else:text='Pemeriksaan awal memenuhi aturan demo. '+('Distribusi ke kontak uji sedang diantrekan; belum dinyatakan terkirim.' if self.config.destinations() else 'Penerima uji belum diaktifkan; belum ada pengiriman.')
+            else:text='Pemeriksaan awal memenuhi aturan demo. '+('Distribusi ke kontak uji sedang diantrekan; belum dinyatakan terkirim.' if self.store.destinations() else 'Penerima uji belum diaktifkan; belum ada pengiriman.')
             self.store.notify(db,r,f'analysis:{r["id"]}:{r["revision"]}:{r["latest_seq"]}',text)
             self.store.audit(db,r['id'],'ANALYSIS_DECIDED',decision)
             db.execute("UPDATE analysis_jobs SET state='done',lease_until=NULL WHERE id=%s",(job['id'],))
 
     def _candidate_advice(self,job,r,sources):
         loc=r['state']['location']
-        if region_check(self.config.region(),loc['latitude'],loc['longitude'])!='inside':return
+        if region_check(self.store.region(),loc['latitude'],loc['longitude'])!='inside':return
         with self.store.connect() as db:
             db.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s,0))',('incidents:'+r['account_id'],))
             db.execute('SELECT id FROM reports WHERE id=%s FOR UPDATE',(r['id'],))
