@@ -34,7 +34,7 @@ Migrasi tidak menganalisis laporan lama. Untuk uji baru: kirim `REPORT`, lalu `B
 
 ## Data dan aktivasi routing
 
-Konfigurasi privat: `.runtime/task3/config.json`; jangan commit atau membagikan isinya. `distribution_enabled` tetap `false` sampai setup selesai. Dua penerima uji harus berbeda satu sama lain, nomor bot, dan seluruh pelapor uji.
+Konfigurasi privat: `.runtime/task3/config.json`; jangan commit atau membagikan isinya. Pada deployment MVP, PostgreSQL menjadi sumber routing recipient, boundary, dan status layanan; file Task 3 hanya fixture lokal/snapshot provider. `distribution_enabled` tetap `false` sampai setup selesai. Dua penerima uji harus berbeda satu sama lain, nomor bot, dan seluruh pelapor uji.
 
 ```json
 "destinations": {
@@ -43,7 +43,7 @@ Konfigurasi privat: `.runtime/task3/config.json`; jangan commit atau membagikan 
 }
 ```
 
-Ganti contoh dengan E.164 yang valid. Cocokkan `inbound_senders` dengan daftar pelapor sebenarnya serta `bot_number` dengan akun bot. Pada konfigurasi privat OpenClaw, tambahkan kedua nomor hanya ke `plugins.entries.sigapi-validation-demo.config.outboundRecipients`. Jangan menambahkannya ke `allowSenders` atau `channels.whatsapp.allowFrom`: izin masuk dan keluar berbeda. Restart gateway setelah perubahan plugin.
+Ganti contoh dengan E.164 yang valid. Cocokkan `inbound_senders` dengan daftar pelapor sebenarnya serta `bot_number` dengan akun bot. Set `SIGAPI_OUTBOUND_RECIPIENTS` privat atau `plugins.entries.sigapi-validation-demo.config.outboundRecipients` hanya untuk dua nomor tersebut. Jangan menambahkannya ke `allowSenders` atau `channels.whatsapp.allowFrom`: izin masuk dan keluar berbeda. Restart gateway setelah perubahan plugin.
 
 ```powershell
 .\.venv\Scripts\python.exe -m backend.cli task3-fetch region

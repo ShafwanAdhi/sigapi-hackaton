@@ -71,6 +71,8 @@ Manage authority and community recipients through the dashboard. Authorization
 and activation are separate. Editing a recipient cancels its pending/leased
 cards; admission also rechecks its UUID, version, account and number. Test sends
 require an explicit authenticated operator action and never contain incident data.
+Production analysis workers read the same PostgreSQL recipient and region state;
+the local Task 3 JSON file is not allowed to override dashboard changes.
 
 Normal dispatch requires an eligible current decision. Public projections are
 published in the same transaction. Private high-threat escalation does not
