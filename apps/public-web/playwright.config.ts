@@ -11,7 +11,6 @@ export default defineConfig({
     viewport: { width: 390, height: 844 },
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
-    launchOptions: { channel: 'msedge' },
   },
   webServer: {
     command: 'npm run dev',

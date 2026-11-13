@@ -129,7 +129,9 @@ services:
     build: {context: ., dockerfile: deploy/Dockerfile.api, target: test}
     profiles: [test]
     mem_limit: 512m
-    environment: {TEST_DATABASE_URL: 'postgresql://test_app:${SIGAPI_TEST_DB_PASSWORD:?required}@test-db:5432/sigapi_test'}
+    environment:
+      TEST_DATABASE_URL: 'postgresql://test_app:${SIGAPI_TEST_DB_PASSWORD:?required}@test-db:5432/sigapi_test'
+      DATABASE_URL: 'postgresql://test_app:${SIGAPI_TEST_DB_PASSWORD:?required}@test-db:5432/sigapi_test'
     networks: [private]
     depends_on: {test-db: {condition: service_healthy}}
 networks:

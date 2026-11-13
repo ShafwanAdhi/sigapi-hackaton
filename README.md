@@ -24,7 +24,7 @@ Ada **5 task berurutan** dalam [rencana implementasi](docs/superpowers/plans/202
 
 Jalankan versi sekarang mengikuti [panduan Task 3](docs/setup-task-3.md). FastAPI menyimpan input/job ke PostgreSQL; worker analisis terpisah menerima bahasa alami dan memeriksa bukti. Distribusi masih nonaktif sampai dua penerima uji dan tinjauan batas wilayah siap. Izin kontak default tidak diberikan. Kelengkapan, pemeriksaan awal, dan receipt pengiriman tetap terpisah.
 
-Pemeriksaan terhadap Knowledge v3 dan keputusan pengguna pada 24 Oktober tercatat dalam [audit kesesuaian bisnis](docs/audit-knowledge-v3-2026-10-24.md). Teks lokasi hanya untuk klarifikasi; pin/koordinat tetap wajib. EXIF opsional dan ketiadaannya saja tidak menahan laporan. Demo tidak menambahkan pemberitahuan/persetujuan khusus pemrosesan laporan/AI; izin berbagi kontak tetap eksplisit dan opsional. Pemeriksaan konsistensi lintas sumber dan panduan keselamatan belum lengkap. Form GPS dan TRACK masih Task 4.
+Pemeriksaan terhadap Knowledge v3 dan keputusan pengguna pada 24 Oktober tercatat dalam [audit kesesuaian bisnis](docs/audit-knowledge-v3-2026-10-24.md). Teks lokasi hanya untuk klarifikasi; pin/koordinat tetap wajib. EXIF opsional dan ketiadaannya saja tidak menahan laporan. Demo tidak menambahkan pemberitahuan/persetujuan khusus pemrosesan laporan/AI; izin berbagi kontak tetap eksplisit dan opsional. Pemeriksaan konsistensi lintas sumber dan panduan keselamatan masih memiliki gap yang tercatat. Form GPS, dashboard admin, dan TRACK tersedia pada branch ini; acceptance live WhatsApp, boundary, recipient, dan rehearsal masih pending.
 
 ## Setup provider dan pemeriksaan Task 1
 
@@ -40,7 +40,7 @@ Set-Location D:\sigapi
 .\.venv\Scripts\python.exe -m backend.cli readiness
 ```
 
-Tes provider memakai transport tiruan; tes intake memakai TEST_DATABASE_URL terpisah serta HTTP dan Node lokal. Hasilnya tidak membuktikan koneksi akun atau pengiriman WhatsApp. `readiness` memeriksa keberadaan konfigurasi/komponen, bukan keberhasilan analisis nyata.
+Tes provider memakai transport tiruan; tes intake memakai TEST_DATABASE_URL terpisah serta HTTP dan Node lokal. Hasilnya tidak membuktikan koneksi akun atau pengiriman WhatsApp. `readiness` memeriksa keberadaan konfigurasi/komponen, bukan keberhasilan analisis nyata. CI menjalankan fixture yang sama pada PostgreSQL disposable; acceptance live tetap harus dibuktikan terpisah.
 
 Pilihan minimum Task 1: plugin JavaScript memakai SDK hooks yang tersedia; SerpApi memakai Image API + Lens; Vision opsional memakai REST resmi + `google-auth`; kuota smoke memakai SQLite lokal. Intake persisten PostgreSQL dan spool tersedia pada Task 2. FFmpeg/FFprobe 9.0.2 tersedia lokal di `.runtime/ffmpeg/bin`; CLI menambahkan direktori itu ke PATH proses untuk video/readiness. Arsip dari rilis resmi Gyan diverifikasi SHA-256.
 

@@ -81,6 +81,14 @@ not an assertion that unrelated processes never restarted.
 5. Only after those checks pass, record the live gate and enable public admission
    plus the gateway's open DM policy. Keep outbound authorization independent.
 
+## Baseline versus live readiness
+
+The current branch includes the public GPS form, owner-scoped TRACK, and the
+five-menu administrator application. CI and fixture tests validate code paths
+only. They do not satisfy the live gates above, prove provider evidence, or
+prove WhatsApp receipts. Boundary approval, paired gateway, authorized
+recipients, live rehearsal, off-host recovery, and load capacity remain open.
+
 The implementation is deployed for controlled acceptance. The public MVP is not
 declared complete until the real rehearsal passes. Satellite hotspots, reverse
 image search and public contributions remain evidence signals, not proof of an
