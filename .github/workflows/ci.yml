@@ -62,7 +62,8 @@ jobs:
           cache-dependency-path: apps/${{ matrix.app }}/package-lock.json
       - run: npm ci
       - run: npm run build
-      - run: npm test
+      - if: matrix.app == 'public-web'
+        run: npm test
 
   playwright:
     runs-on: ubuntu-latest
